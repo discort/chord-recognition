@@ -1,0 +1,5 @@
+jupyter==1.0.0
+librosa==0.8.0
+livelossplot==0.5.3
+pandas==1.0.3
+torch==1.6.0
