@@ -5,6 +5,7 @@ from random import shuffle
 import warnings
 
 import librosa
+import numpy as np
 import torch
 from torch.utils.data import Dataset, IterableDataset, ChainDataset
 
@@ -71,6 +72,72 @@ class MirexDataset(Dataset):
             if os.path.isfile(file_path) and file_path.endswith('.lab'):
                 ann_name = file_name.replace('.lab', '')
                 ann_list.append(ann_name)
+        return ann_list
+
+
+class MirexFameDataset(Dataset):
+    def __init__(self, audio_dir, ann_dir, window_size=4096, hop_length=2048, context_size=None):
+        """
+        Args:
+            audio_dir (string): Path to audio dir
+            ann_dir (string): Path to the dir with csv annotations.
+        """
+        self.audio_dir = audio_dir
+        self.ann_dir = ann_dir
+        self.window_size = window_size
+        self.hop_length = hop_length
+        self.ann_list = self._build_ann_list()
+        self.context_size = context_size
+        self.chord_labels = get_chord_labels(ext_minor='m', nonchord=True)
+        self._frames = []
+        self._init_dataset()
+
+    def __len__(self):
+        return len(self._frames)
+
+    def __getitem__(self, idx):
+        return self._frames[idx]
+
+    def _init_dataset(self):
+        for filename in self.ann_list:
+            audio_frames = self._init_audio(filename)
+            self._frames.extend(audio_frames)
+
+    def _init_audio(self, filename):
+        audio_path = os.path.join(self.audio_dir, filename + '.mp3')
+        audio_waveform, sampling_rate = librosa.core.load(audio_path, sr=None)
+
+        # The quarter-tone spectrogram contains only bins corresponding to frequencies
+        # between 65 Hz and 2100 Hz and has 24 bins per octave.
+        # This results in a dimensionality of 105 bins
+        chromagram = librosa.feature.chroma_stft(audio_waveform, sr=sampling_rate, norm=None,
+                                                 n_fft=self.window_size, hop_length=self.hop_length,
+                                                 tuning=0, n_chroma=105)
+        N_X = chromagram.shape[1]
+        Fs_X = sampling_rate / self.hop_length
+
+        ann_path = os.path.join(self.ann_dir, filename + '.lab')
+        ann_matrix, _, _, _ = convert_chord_ann_matrix(
+            fn_ann=ann_path, chord_labels=self.chord_labels, Fs=Fs_X, N=N_X, last=False)
+
+        container = ContextContainer(chromagram, self.context_size)
+        result = []
+        for frame, idx_target in zip(container, range(N_X)):
+            label = np.argmax(ann_matrix[:, idx_target])
+            result.append((frame.reshape(1, *frame.shape), label))
+        return result
+
+    def _build_ann_list(self):
+        ann_list = []
+        for root, dirs, files in os.walk(self.ann_dir):
+            for file_name in files:
+                if file_name.startswith('.'):
+                    continue
+
+                file_path = os.path.join(root, file_name)
+                if os.path.isfile(file_path) and file_path.endswith('.lab'):
+                    ann_name = file_name.replace('.lab', '')
+                    ann_list.append(os.path.join(os.path.basename(root), ann_name))
         return ann_list
 
 
@@ -145,20 +212,28 @@ class MirexChainDataset(ChainDataset):
             self.ann_list.extend(d.ann_list)
 
 
+def split_iterable_dataset(dataset, train_size=0.8):
+    from copy import deepcopy, copy
+    ann_labels = copy(dataset.ann_list)
+    shuffle(ann_labels)
+    train_size = int(0.8 * len(ann_labels))
+    #test_size = len(ann_labels) - train_size
+    train_dataset = deepcopy(dataset)
+    train_dataset.ann_list = ann_labels[:train_size]
+
+    test_dataset = deepcopy(dataset)
+    test_dataset.ann_list = ann_labels[train_size:]
+    return train_dataset, test_dataset
+
+
 if __name__ == '__main__':
     # Some testing stuff
     from torch.utils.data import DataLoader
 
-    dataset = FrameIterableDataset(audio_dir='data/beatles/mp3s-32k/Let_It_Be/',
-                                   ann_dir='data/beatles/chordlabs/Let_It_Be/',
-                                   window_size=8192, hop_length=4096)
-    beatles_dataset = FrameIterableDataset(audio_dir='data/beatles/mp3s-32k/',
-                                           ann_dir='data/beatles/chordlabs/',
-                                           window_size=8192, hop_length=4096)
-    queen_dataset = FrameIterableDataset(audio_dir='data/queen/mp3/',
-                                         ann_dir='data/queen/chordlabs/',
-                                         window_size=8192, hop_length=4096)
-    dataset = MirexChainDataset([beatles_dataset, queen_dataset])
+    dataset = MirexFameDataset(audio_dir='data/beatles/mp3s-32k/Let_It_Be/',
+                               ann_dir='data/beatles/chordlabs/Let_It_Be/',
+                               window_size=8192, hop_length=4096, context_size=7)
     loader_train = DataLoader(dataset, num_workers=0, batch_size=32)
+    import pudb; pudb.set_trace()
     for frame, label in loader_train:
         print(frame.shape, label.shape)
