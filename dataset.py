@@ -123,7 +123,8 @@ class MirexFameDataset(Dataset):
         container = ContextContainer(chromagram, self.context_size)
         result = []
         for frame, idx_target in zip(container, range(N_X)):
-            label = np.argmax(ann_matrix[:, idx_target])
+            #label = np.argmax(ann_matrix[:, idx_target])
+            label = ann_matrix[:, idx_target]
             result.append((frame.reshape(1, *frame.shape), label))
         return result
 
@@ -204,36 +205,18 @@ class FrameIterableDataset(IterableDataset):
         return ann_list
 
 
-class MirexChainDataset(ChainDataset):
-    def __init__(self, datasets):
-        super(MirexChainDataset, self).__init__(datasets)
-        self.ann_list = []
-        for d in datasets:
-            self.ann_list.extend(d.ann_list)
-
-
-def split_iterable_dataset(dataset, train_size=0.8):
-    from copy import deepcopy, copy
-    ann_labels = copy(dataset.ann_list)
-    shuffle(ann_labels)
-    train_size = int(0.8 * len(ann_labels))
-    #test_size = len(ann_labels) - train_size
-    train_dataset = deepcopy(dataset)
-    train_dataset.ann_list = ann_labels[:train_size]
-
-    test_dataset = deepcopy(dataset)
-    test_dataset.ann_list = ann_labels[train_size:]
-    return train_dataset, test_dataset
-
-
 if __name__ == '__main__':
     # Some testing stuff
     from torch.utils.data import DataLoader
+    from augmentations import SemitoneShift, ChainLoader
 
     dataset = MirexFameDataset(audio_dir='data/beatles/mp3s-32k/Let_It_Be/',
                                ann_dir='data/beatles/chordlabs/Let_It_Be/',
                                window_size=8192, hop_length=4096, context_size=7)
-    loader_train = DataLoader(dataset, num_workers=0, batch_size=32)
+    loader_train = DataLoader(dataset, shuffle=True, num_workers=0, batch_size=32)
     import pudb; pudb.set_trace()
-    for frame, label in loader_train:
-        print(frame.shape, label.shape)
+    augmented = SemitoneShift(loader_train, p=1.0, max_shift=4, bins_per_semitone=2)
+    iterator = ChainLoader(loader_train, augmented)
+    for e in range(2):
+        for inputs, labels in iterator:
+            print(e, inputs.shape, labels.shape)

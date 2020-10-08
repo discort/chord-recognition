@@ -209,6 +209,19 @@ def convert_chord_label(ann):
         ann[k][2] = ann[k][2].replace('Gb', 'F#')
         ann[k][2] = ann[k][2].replace('Ab', 'G#')
         ann[k][2] = ann[k][2].replace('Bb', 'A#')
+
+        ann[k][2] = ann[k][2].replace('C:maj', 'C')
+        ann[k][2] = ann[k][2].replace('C#:maj', 'C#')
+        ann[k][2] = ann[k][2].replace('D:maj', 'D')
+        ann[k][2] = ann[k][2].replace('D#:maj', 'D#')
+        ann[k][2] = ann[k][2].replace('E:maj', 'E')
+        ann[k][2] = ann[k][2].replace('F:maj', 'F')
+        ann[k][2] = ann[k][2].replace('F#:maj', 'F#')
+        ann[k][2] = ann[k][2].replace('G:maj', 'G')
+        ann[k][2] = ann[k][2].replace('G#:maj', 'G#')
+        ann[k][2] = ann[k][2].replace('A:maj', 'A')
+        ann[k][2] = ann[k][2].replace('A#:maj', 'A#')
+        ann[k][2] = ann[k][2].replace('B:maj', 'B')
     return ann
 
 

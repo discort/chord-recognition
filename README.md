@@ -1,6 +1,6 @@
 # chord_estimation
 
-## 1 - Download datasets using this [link](https://drive.google.com/file/d/1CMRbe1Bwkoi4K_nfVeZkr9KWLXSgcGhu/view?usp=sharing)
+## 1 - Download datasets using this [link](https://drive.google.com/file/d/1t6MU6ZI-27e25mKYcFbM5H5oUQrst7nD/view?usp=sharing)
 
 ## 2 - Unzip data and put into root of a project
     
