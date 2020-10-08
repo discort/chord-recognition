@@ -3,6 +3,7 @@ import random
 
 import numpy as np
 import torch
+from torch.utils.data import Dataset
 
 
 def compose(*functions):
@@ -141,14 +142,13 @@ class IterableSemitoneShift:
             yield torch.from_numpy(new_data), torch.from_numpy(new_targets)
 
 
-class SemitoneShift:
-    def __init__(self, batch_iterator, p, max_shift, bins_per_semitone,
-                 target_type='chords_maj_min'):
+class SemitoneShift(Dataset):
+    def __init__(self, dataset_iterator, p, max_shift, bins_per_semitone):
         self.p = p
         self.max_shift = max_shift
         self.bins_per_semitone = bins_per_semitone
         self._frames = []
-        self._init_data(batch_iterator)
+        self._init_data(dataset_iterator)
 
     def __len__(self):
         return len(self._frames)
@@ -156,12 +156,8 @@ class SemitoneShift:
     def __getitem__(self, idx):
         return self._frames[idx]
 
-    def _init_data(self, batch_iterator):
-        for data, targets in batch_iterator:
-            # Temp hack to work with numpy
-            data = data.data.numpy()
-            targets = targets.data.numpy().astype('long')
-
+    def _init_data(self, dataset_iterator):
+        for data, targets in dataset_iterator:
             batch_size = len(data)
 
             shifts = np.random.randint(-self.max_shift,
@@ -181,8 +177,7 @@ class SemitoneShift:
                 new_data[i] = np.roll(
                     data[i], shifts[i] * self.bins_per_semitone, axis=-1)
 
-            result = (torch.from_numpy(new_data), torch.from_numpy(new_targets))
-            self._frames.append(result)
+            self._frames.append((new_data, new_targets))
 
     def adapt_targets(self, targets, shifts):
         chord_classes = targets.argmax(-1)
@@ -195,37 +190,4 @@ class SemitoneShift:
         new_chord_classes = new_chord_roots + chord_majmin * 12
         new_chord_classes[no_chords] = no_chord_class_index
         new_targets = one_hot(new_chord_classes, no_chord_class_index + 1)
-        return new_targets
-
-
-class _ChainIterator:
-    def __init__(self, loader):
-        from itertools import chain
-        self._length = self._calculate_length(loader.containers)
-        self._iterator = chain(*loader.containers)
-
-    def __iter__(self):
-        return self._iterator
-
-    def __len__(self):
-        return self._length
-
-    @staticmethod
-    def _calculate_length(containers):
-        length = 0
-        for i in containers:
-            length += len(i)
-        return length
-
-
-class ChainLoader:
-    """
-    Combines a loader and custom iterable.
-    Works only for single process
-    """
-
-    def __init__(self, *containers):
-        self.containers = containers
-
-    def __iter__(self):
-        return _ChainIterator(self).__iter__()
+        return new_targets.squeeze().astype('long')

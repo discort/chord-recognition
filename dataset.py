@@ -124,7 +124,7 @@ class MirexFameDataset(Dataset):
         result = []
         for frame, idx_target in zip(container, range(N_X)):
             #label = np.argmax(ann_matrix[:, idx_target])
-            label = ann_matrix[:, idx_target]
+            label = ann_matrix[:, idx_target].astype('long')
             result.append((frame.reshape(1, *frame.shape), label))
         return result
 
@@ -207,16 +207,15 @@ class FrameIterableDataset(IterableDataset):
 
 if __name__ == '__main__':
     # Some testing stuff
-    from torch.utils.data import DataLoader
-    from augmentations import SemitoneShift, ChainLoader
+    from torch.utils.data import DataLoader, ConcatDataset
+    from augmentations import SemitoneShift
 
     dataset = MirexFameDataset(audio_dir='data/beatles/mp3s-32k/Let_It_Be/',
                                ann_dir='data/beatles/chordlabs/Let_It_Be/',
                                window_size=8192, hop_length=4096, context_size=7)
-    loader_train = DataLoader(dataset, shuffle=True, num_workers=0, batch_size=32)
     import pudb; pudb.set_trace()
-    augmented = SemitoneShift(loader_train, p=1.0, max_shift=4, bins_per_semitone=2)
-    iterator = ChainLoader(loader_train, augmented)
-    for e in range(2):
-        for inputs, labels in iterator:
-            print(e, inputs.shape, labels.shape)
+    augmented = SemitoneShift(dataset, p=1.0, max_shift=4, bins_per_semitone=2)
+    dataset = ConcatDataset([dataset, augmented])
+    loader_train = DataLoader(dataset, shuffle=True, num_workers=0, batch_size=32)
+    for inputs, labels in loader_train:
+        print(inputs.shape, labels.shape)
