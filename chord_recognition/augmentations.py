@@ -116,10 +116,6 @@ class IterableSemitoneShift:
         :return: augmented data/target pairs
         """
         for data, targets in batch_iterator:
-            # Temp hack to work with numpy
-            data = data.data.numpy()
-            targets = targets.data.numpy().astype('long')
-
             batch_size = len(data)
 
             shifts = np.random.randint(-self.max_shift,

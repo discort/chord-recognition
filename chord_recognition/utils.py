@@ -1,6 +1,9 @@
+import itertools
+import tempfile
+
+import librosa
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import normalize
 
 
 def get_chord_labels(ext_minor='m', nonchord=False):
@@ -19,93 +22,6 @@ def get_chord_labels(ext_minor='m', nonchord=False):
     if nonchord is True:
         chord_labels += ['N']
     return chord_labels
-
-
-def generate_chord_templates(nonchord=False, seventh=False):
-    """Generate chord templates of major and minor triads (and possibly nonchord)
-
-    Args:
-        nonchord: If "True" then add nonchord template
-
-    Returns:
-        chord_templates: Matrix containing chord_templates as columns
-    """
-    template_cmaj = np.array([1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0]).T
-    template_cmin = np.array([1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0]).T
-    num_chord = 24
-    if nonchord:
-        num_chord = 25
-    chord_templates = np.ones((12, num_chord))
-    for shift in range(12):
-        chord_templates[:, shift] = np.roll(template_cmaj, shift)
-        chord_templates[:, shift+12] = np.roll(template_cmin, shift)
-
-    if seventh is True:
-        seventh_templates = generate_seventh_chord_templates()
-        chord_templates = np.hstack((chord_templates, seventh_templates))
-    return chord_templates
-
-
-def get_seventh_chord_labels(ext_maj7=':maj7', ext_min7=':min7', ext7=':7'):
-    """Generate chord labels for major and minor seventh
-
-    Returns:
-        chord_labels: List of chord labels
-    """
-    chroma_labels = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-    chord_labels_maj = [s + ext_maj7 for s in chroma_labels]
-    chord_labels_min = [s + ext_min7 for s in chroma_labels]
-    chord_labels7 = [s + ext7 for s in chroma_labels]
-    chord_labels = chord_labels_maj + chord_labels_min + chord_labels7
-    return chord_labels
-
-
-def generate_seventh_chord_templates():
-    """Generate chord templates of major and minor seventh
-
-    Returns:
-        chord_templates: Matrix containing chord_templates as columns
-    """
-    # Generate maj7 template
-    template_cmaj = np.array([1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1]).T
-    # Generate min7 template
-    template_cmin = np.array([1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0]).T
-    # Generate dominant seventh template
-    template_dominant = np.array([1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0]).T
-    num_chord = 36
-    chord_templates = np.ones((12, num_chord))
-    for shift in range(12):
-        chord_templates[:, shift] = np.roll(template_cmaj, shift)
-        chord_templates[:, shift+12] = np.roll(template_cmin, shift)
-        chord_templates[:, shift+24] = np.roll(template_dominant, shift)
-    return chord_templates
-
-
-def chord_recognition_template(X, nonchord=False, seventh=False):
-    """Conducts template-based chord recognition
-    with major and minor triads (and possibly nonchord)
-
-    Args:
-        X: Chromagram
-        nonchord: If "True" then add nonchord template
-
-    Returns:
-        chord_sim: Chord similarity matrix
-        chord_max: Binarized chord similarity matrix only containing maximizing chord
-    """
-    chord_templates = generate_chord_templates(nonchord=nonchord, seventh=seventh)
-    chord_templates_norm = normalize(chord_templates, norm='l2', axis=0)
-    X_norm = normalize(X, norm='l2', axis=0)
-
-    # Inner product of normalized vectors as a similarity measure
-    chord_sim = np.matmul(chord_templates_norm.T, X_norm)
-    chord_sim = normalize(chord_sim, norm='l1', axis=0)
-    chord_max_index = np.argmax(chord_sim, axis=0)
-    chord_max = np.zeros(chord_sim.shape).astype(np.int32)
-    for n in range(chord_sim.shape[1]):
-        chord_max[chord_max_index[n], n] = 1
-
-    return chord_sim, chord_max
 
 
 def read_csv(fn, header=False, add_label=False, sep=' '):
@@ -155,7 +71,6 @@ def convert_structure_annotation(ann, Fs=1, remove_digits=False, index=False):
     Returns:
         ann_converted: Converted annotation
     """
-
     ann_converted = []
     for r in ann:
         s = r[0] * Fs
@@ -258,6 +173,8 @@ def convert_chord_ann_matrix(fn_ann, chord_labels, Fs=1, N=None, last=False):
         ann_seg_frame: Encoding of label sequence as segment-based annotation (given in indices)
         ann_seg_ind: Segment-based annotation with segments (given in indices)
     """
+    ann_seg_sec = read_structure_annotation(fn_ann)
+    ann_seg_sec = convert_chord_label(ann_seg_sec)
     ann_seg_ind = read_structure_annotation(fn_ann, Fs=Fs, index=True)
     ann_seg_ind = convert_chord_label(ann_seg_ind)
 
@@ -282,67 +199,145 @@ def convert_chord_ann_matrix(fn_ann, chord_labels, Fs=1, N=None, last=False):
         if label in chord_labels:
             label_index = chord_labels.index(label)
             ann_matrix[label_index, n] = 1
-    return ann_matrix, ann_frame, ann_seg_frame, ann_seg_ind
+    return ann_matrix, ann_frame, ann_seg_frame, ann_seg_ind, ann_seg_sec
 
 
-def uniform_transition_matrix(p=0.01, N=24):
-    """Computes uniform transition matrix
+def compute_chromagram(audio_waveform, Fs, window_size=8192, hop_length=4096,
+                       n_chroma=105, norm=None, tuning=0):
+    """
+    Computes a chromagram from a waveform
+
+    The quarter-tone spectrogram contains only bins corresponding to frequencies
+    between 65 Hz and 2100 Hz and has 24 bins per octave.
+    This results in a dimensionality of 105 bins
 
     Args:
-        p: Self transition probability
-        N: Column and row dimension
+        audio_waveform: Audio time series (np.ndarray [shape=(n,))
+        Fs: Sampling rate
+        window_size: FFT window size
+        hop_length: Hop length
+        n_chroma: Number of chroma bins to produce
+        norm: Column-wise normalization (if None, no normalization is performed)
+        tuning: Deviation from A440 tuning in fractional bins (cents)
 
     Returns:
-        A: Output transition matrix
+        chromagram: Normalized energy for each chroma bin at each frame
+                    (np.ndarray [shape=(n_chroma, t)])
     """
-    off_diag_entries = (1 - p) / (N - 1)     # rows should sum up to 1
-    A = off_diag_entries * np.ones([N, N])
-    np.fill_diagonal(A, p)
-    return A
+    chromagram = librosa.feature.chroma_stft(audio_waveform, sr=Fs, norm=norm,
+                                             n_fft=window_size, hop_length=hop_length,
+                                             tuning=tuning, n_chroma=n_chroma)
+    return chromagram
 
 
-def viterbi_log_likelihood(A, C, B_O):
-    """Viterbi algorithm (log variant) for solving the uncovering problem
+def read_audio(path, Fs=None, mono=False):
+    """Reads an audio file
 
     Args:
-        A: State transition probability matrix of dimension I x I
-        C: Initial state distribution  of dimension I
-        B_O: Likelihood matrix of dimension I x N
+        path: Path to audio file
+        Fs: Resample audio to given sampling rate. Use native sampling rate if None.
+        mono (bool): Convert multi-channel file to mono.
 
     Returns:
-        S_opt: Optimal state sequence of length N
-        S_mat: Binary matrix representation of optimal state sequence
-        D_log: Accumulated log probability matrix
-        E: Backtracking matrix
+        x: Audio time series (np.ndarray [shape=(n,))
+        Fs: Sampling rate
     """
-    I = A.shape[0]  # Number of states
-    N = B_O.shape[1]  # Length of observation sequence
-    tiny = np.finfo(0.).tiny
-    A_log = np.log(A + tiny)
-    C_log = np.log(C + tiny)
-    B_O_log = np.log(B_O + tiny)
+    return librosa.load(path, sr=Fs, mono=mono)
 
-    # Initialize D and E matrices
-    D_log = np.zeros((I, N))
-    E = np.zeros((I, N-1)).astype(np.int32)
-    D_log[:, 0] = C_log + B_O_log[:, 0]
 
-    # Compute D and E in a nested loop
-    for n in range(1, N):
-        for i in range(I):
-            temp_sum = A_log[:, i] + D_log[:, n-1]
-            D_log[i, n] = np.max(temp_sum) + B_O_log[i, n]
-            E[i, n-1] = np.argmax(temp_sum)
+def read_audio_from_stream(stream, Fs=None, mono=False):
+    """Reads an audio file from stream.
+    Since librosa does not support reading mp3 in buffer.
+    https://github.com/librosa/librosa/pull/1066
 
-    # Backtracking
-    S_opt = np.zeros(N).astype(np.int32)
-    S_opt[-1] = np.argmax(D_log[:, -1])
-    for n in range(N-2, 0, -1):
-        S_opt[n] = E[int(S_opt[n+1]), n]
+    Args:
+        path: Path to audio file
+        Fs: Resample audio to given sampling rate. Use native sampling rate if None.
+        mono: Convert multi-channel file to mono (bool)
 
-    # Matrix representation of result
-    S_mat = np.zeros((I, N)).astype(np.int32)
-    for n in range(N):
-        S_mat[S_opt[n], n] = 1
+    Returns:
+        x: Audio time series (np.ndarray [shape=(n,))
+        Fs: Sampling rate
+    """
+    with tempfile.NamedTemporaryFile() as ntf:
+        ntf.write(stream.read())
+        return read_audio(ntf.name, Fs, mono)
 
-    return S_mat, S_opt, D_log, E
+
+def compute_annotation(ann_matrix, hop_length, Fs, nonchord=False):
+    # Convert one-hot repr to label repr (25, 2822) -> (2822, 1)
+    # Convert sequence annotation list ([s,t,'label'])
+    # Convert list to structure annotation [3055, 3076, 'N'] -> (283.724286, 285.666644, 'N')]
+    label_seq = convert_annotation_matrix(ann_matrix, nonchord=True)
+    ann_seg = convert_label_sequence(label_seq)
+    Fs_X = Fs / hop_length
+    ann = convert_annotation_segments(ann_seg, Fs=Fs_X)
+    return ann
+
+
+def convert_annotation_matrix(ann_matrix, nonchord=False):
+    """Converts annotation matrix to sequence of labels
+
+    Args:
+        ann_matrix: annotation matrix
+
+    Returns:
+        labels_sec: list of labels sequences
+    """
+    chord_labels = get_chord_labels(nonchord=nonchord)
+
+    labels_sec = []
+    N = ann_matrix.shape[1]
+    for i in range(N):
+        one_hot = ann_matrix[:, i]
+        label = next(itertools.compress(chord_labels, one_hot))
+        labels_sec.append(label)
+    return labels_sec
+
+
+def convert_label_sequence(label_seq):
+    """Converts label sequence to frame-segment representation [s,t,'label']
+
+    Args:
+        label_seq: list of labels
+
+    Returns:
+        ann_seg: segment-based annotation
+    """
+    result = []
+    N = len(label_seq)
+    start_index = end_index = 0
+    for i in range(N):
+        if i == 0:
+            end_index += 1
+            continue
+
+        item = label_seq[i]
+        prev_item = label_seq[i - 1]
+
+        if item != prev_item:
+            result.append((start_index, end_index, prev_item))
+            start_index = i
+            end_index += 1
+        else:
+            end_index += 1
+            if i == N - 1:
+                result.append((start_index, end_index, item))
+    return result
+
+
+def convert_annotation_segments(ann_seg, Fs=1):
+    """Converts annotation segments to time-wised notation
+
+    Args:
+        ann_seg: segment-based annotation in [s,t,'label'] format
+
+    Returns:
+        result: time-based annotation in [start_time,end_time,'label'] format
+    """
+    result = []
+    for r in ann_seg:
+        s = r[0] / Fs
+        t = r[1] / Fs
+        result.append((s, t, r[2]))
+    return result
