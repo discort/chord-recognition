@@ -1,9 +1,12 @@
 import itertools
 import tempfile
+import warnings
 
 import librosa
 import numpy as np
 import pandas as pd
+
+warnings.filterwarnings("ignore")
 
 
 def get_chord_labels(ext_minor='m', nonchord=False):
@@ -326,10 +329,10 @@ def convert_label_sequence(label_seq):
     return result
 
 
-def convert_annotation_segments(ann_seg, Fs=1):
+def convert_annotation_segments(ann_seg, Fs=1, round_decimals=4):
     """Converts annotation segments to time-wised notation
 
-    Args:
+    Args:end_index
         ann_seg: segment-based annotation in [s,t,'label'] format
 
     Returns:
@@ -339,5 +342,8 @@ def convert_annotation_segments(ann_seg, Fs=1):
     for r in ann_seg:
         s = r[0] / Fs
         t = r[1] / Fs
+        if round_decimals:
+            s = np.around(s, decimals=round_decimals)
+            t = np.around(t, decimals=round_decimals)
         result.append((s, t, r[2]))
     return result

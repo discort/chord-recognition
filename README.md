@@ -1,12 +1,35 @@
-# Chord Recognition Tools
+# Chord Recognition Library
 
-Jupyter notebooks and library to solve Audio Chord Recognition (Chord Estimation) [problem](https://www.music-ir.org/mirex/wiki/2020:Audio_Chord_Estimation).
+A library to solve Audio Chord Recognition (Chord Estimation) [problem](https://www.music-ir.org/mirex/wiki/2020:Audio_Chord_Estimation).
 
-#### For using pre-trained model install by
+Some of pre-trained model metrics of major and minor chords on [Isophonics](http://isophonics.net/datasets) and [Robbie Williams](https://www.researchgate.net/publication/260399240_Chord_and_Harmony_annotations_of_the_first_five_albums_by_Robbie_Williams) datasets.
+_ | Precision | Recall | F1-measure
+--- |--- | --- | --- |
+Isophonics | 0.74 | 0.95 | 0.81 |
+Robbie Williams | 0.53 | 0.60 | 0.56 |
+
+## Installation
 
     pip install git+https://github.com/discort/chord-recognition
 
-## To train model manually
+## Usage
+
+```python
+from chord_recognition.utils import read_audio
+from chord_recognition.predict import annotate_audio
+
+audio_waveform, Fs = read_audio('tests/fixtures/C_Am.mp3')
+result = annotate_audio(audio_waveform, Fs=Fs, nonchord=True)
+print(result)
+[(0.0, 2.1362, 'N'),
+ (2.1362, 2.2291, 'G'),
+ (2.2291, 2.8793, 'C'),
+ (2.8793, 4.1796, 'N'),
+ (4.1796, 5.0155, 'A'),
+ (5.0155, 6.3158, 'N')]
+```
+
+## Development
 
 #### Download datasets
 
@@ -22,7 +45,15 @@ Use this [link](https://drive.google.com/file/d/1t6MU6ZI-27e25mKYcFbM5H5oUQrst7n
 
 #### Run tests
     
-    py.test -s
+    py.test -q --cov=chord_recognition tests
+
+#### Notebook list
+
+```
+nn_training.ipynb            <- Notebook containing train/val code
+evaluation.ipynb             <- For model evaluation
+chords_distribution.ipynb    <- Check chord distribution and other stats data
+```
 
 #### Run jupyter
 

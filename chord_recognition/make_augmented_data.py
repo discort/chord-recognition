@@ -6,7 +6,7 @@ import pandas as pd
 from torch.utils.data import DataLoader, ConcatDataset, SequentialSampler
 
 from augmentations import SemitoneShift
-from dataset import MirexFameDataset, make_frame_df, FrameLabelDataset
+from dataset import MirexFameDataset
 from utils import get_chord_labels
 
 
@@ -21,6 +21,30 @@ def save_data(df, dir_path='data/augmented'):
         header=False,
         index=False)
     print(f"Created '{filename}'")
+
+
+def _mark_to_remove(row):
+    if row.name == 0:  # Skip first row
+        return 0
+    if row.label == row.prev_label:
+        return 1
+    return 0
+
+
+def make_frame_df(data_source):
+    sampler = SequentialSampler(data_source)
+    chord_labels = get_chord_labels(nonchord=True)
+    frame_labels = []
+    for idx in sampler:
+        data, labels = sampler.data_source[idx]
+        frame_label = next(itertools.compress(chord_labels, labels))
+        frame_labels.append(frame_label)
+
+    df = pd.DataFrame(frame_labels, columns=('label',))
+    df['prev_label'] = df.label.shift(1)
+    df['to_remove'] = df.apply(lambda x: _mark_to_remove(x), axis=1)
+    # df = df[df.to_remove == 0]
+    return df
 
 
 def main():

@@ -4,19 +4,20 @@ import torch.nn as nn
 from torch.utils.data import BatchSampler, SequentialSampler
 import torch.nn.functional as F
 
-from chord_recognition.container import ContextContainer
+from chord_recognition.dataset import ContextIterator
 from chord_recognition.utils import compute_chromagram, compute_annotation
 from .cnn import model
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-model.load_state_dict(torch.load('models/etd_best_model.pt', map_location=device))
+model.load_state_dict(
+    torch.load('chord_recognition/models/etd_best_model.pt', map_location=device))
 model.eval()
 
 
 @torch.no_grad()
 def predict_annotations(spectrogram, model, device, batch_size=32, context_size=7, num_classes=25):
-    criterion = nn.Softmax()
-    container = ContextContainer(spectrogram, context_size)
+    criterion = nn.Softmax(dim=1)
+    container = ContextIterator(spectrogram, context_size)
     frames = np.asarray([f.reshape(1, *f.shape) for f in container])
 
     sampler = BatchSampler(SequentialSampler(frames), batch_size=batch_size, drop_last=False)
@@ -48,6 +49,7 @@ def annotate_audio(audio_waveform, Fs, window_size=8192, hop_length=4096, noncho
     # calculate spectrogram
     # apply filterbanks
     # compute annotation matrix
+    # apply moving average smoothing
     # convert annotation matrix to basic ann representation
     chromagram = compute_chromagram(
         audio_waveform=audio_waveform,
@@ -55,5 +57,6 @@ def annotate_audio(audio_waveform, Fs, window_size=8192, hop_length=4096, noncho
         window_size=window_size,
         hop_length=hop_length)
     ann_matrix = predict_annotations(chromagram, model, device, batch_size=8)
+    # apply median smoothing to ann_matrix
     annotations = compute_annotation(ann_matrix, hop_length, Fs, nonchord=nonchord)
     return annotations

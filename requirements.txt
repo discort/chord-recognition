@@ -3,5 +3,6 @@ librosa==0.8.0
 livelossplot==0.5.3
 pandas==1.0.3
 pytest==6.1.1
+pytest-cov==2.10.1
 seaborn==0.11.0
 torch==1.4.0
