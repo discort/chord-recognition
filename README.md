@@ -21,12 +21,13 @@ from chord_recognition.predict import annotate_audio
 audio_waveform, Fs = read_audio('tests/fixtures/C_Am.mp3')
 result = annotate_audio(audio_waveform, Fs=Fs, nonchord=True)
 print(result)
-[(0.0, 2.1362, 'N'),
- (2.1362, 2.2291, 'G'),
- (2.2291, 2.8793, 'C'),
- (2.8793, 4.1796, 'N'),
- (4.1796, 5.0155, 'A'),
- (5.0155, 6.3158, 'N')]
+[(0.0, 2.0434, 'N'),
+ (2.0434, 2.1362, 'C'),
+ (2.1362, 2.7864, 'N'),
+ (2.7864, 2.9722, 'C'),
+ (2.9722, 4.9226, 'N'),
+ (4.9226, 5.2013, 'A'),
+ (5.2013, 6.3158, 'N')]
 ```
 
 ## Development
