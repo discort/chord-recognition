@@ -1,3 +1,5 @@
+import os.path
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -8,9 +10,11 @@ from chord_recognition.dataset import ContextIterator
 from chord_recognition.utils import compute_chromagram, compute_annotation
 from .cnn import model
 
+CURR_DIR = os.path.dirname(__file__)
+
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 model.load_state_dict(
-    torch.load('chord_recognition/models/etd_best_model.pt', map_location=device))
+    torch.load(os.path.join(CURR_DIR, 'models/etd_best_model.pt'), map_location=device))
 model.eval()
 
 
