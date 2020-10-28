@@ -25,4 +25,5 @@ setuptools.setup(
         'pandas==1.0.3',
         'torch==1.4.0',
     ],
+    package_data={'chord_recognition': ['models/*.pt']},
 )
