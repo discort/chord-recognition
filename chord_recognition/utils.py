@@ -233,22 +233,23 @@ def compute_chromagram(audio_waveform, Fs, window_size=8192, hop_length=4096,
     return chromagram
 
 
-def read_audio(path, Fs=None, mono=False):
+def read_audio(path, Fs=None, mono=False, duration=None):
     """Reads an audio file
 
     Args:
         path: Path to audio file
         Fs: Resample audio to given sampling rate. Use native sampling rate if None.
         mono (bool): Convert multi-channel file to mono.
+        duration: only load up to this much audio (in seconds)
 
     Returns:
         x: Audio time series (np.ndarray [shape=(n,))
         Fs: Sampling rate
     """
-    return librosa.load(path, sr=Fs, mono=mono)
+    return librosa.load(path, sr=Fs, mono=mono, duration=duration)
 
 
-def read_audio_from_stream(stream, Fs=None, mono=False):
+def read_audio_from_stream(stream, Fs=None, mono=False, duration=None):
     """Reads an audio file from stream.
     Since librosa does not support reading mp3 in buffer.
     https://github.com/librosa/librosa/pull/1066
@@ -257,6 +258,7 @@ def read_audio_from_stream(stream, Fs=None, mono=False):
         path: Path to audio file
         Fs: Resample audio to given sampling rate. Use native sampling rate if None.
         mono: Convert multi-channel file to mono (bool)
+        duration: only load up to this much audio (in seconds)
 
     Returns:
         x: Audio time series (np.ndarray [shape=(n,))
@@ -264,7 +266,7 @@ def read_audio_from_stream(stream, Fs=None, mono=False):
     """
     with tempfile.NamedTemporaryFile() as ntf:
         ntf.write(stream.read())
-        return read_audio(ntf.name, Fs, mono)
+        return read_audio(ntf.name, Fs, mono, duration)
 
 
 def compute_annotation(ann_matrix, hop_length, Fs, nonchord=False):
