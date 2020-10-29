@@ -45,6 +45,19 @@ def read_csv(fn, header=False, add_label=False, sep=' '):
     return df
 
 
+def log_compression(v, gamma=1):
+    """Logarithmically compresses a value or array
+
+    Args:
+        v: Value or array
+        gamma: Compression factor
+
+    Returns:
+        v_compressed: Compressed value or array
+    """
+    return np.log10(1 + gamma * v)
+
+
 def convert_ann_to_seq_label(ann):
     """Convert structure annotation with integer time positions (given in indices)
     into label sequence

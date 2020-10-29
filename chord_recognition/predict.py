@@ -7,7 +7,7 @@ from torch.utils.data import BatchSampler, SequentialSampler
 import torch.nn.functional as F
 
 from chord_recognition.dataset import ContextIterator
-from chord_recognition.utils import compute_chromagram, compute_annotation
+from chord_recognition.utils import compute_chromagram, compute_annotation, log_compression
 from .cnn import model
 
 CURR_DIR = os.path.dirname(__file__)
@@ -52,6 +52,7 @@ def annotate_audio(audio_waveform, Fs, window_size=8192, hop_length=4096, noncho
     """
     # calculate spectrogram
     # apply filterbanks
+    # logarithmise the filtered magnitudes to compress the value range
     # compute annotation matrix
     # apply moving average smoothing
     # convert annotation matrix to basic ann representation
@@ -60,6 +61,7 @@ def annotate_audio(audio_waveform, Fs, window_size=8192, hop_length=4096, noncho
         Fs=Fs,
         window_size=window_size,
         hop_length=hop_length)
+    chromagram = log_compression(chromagram)
     ann_matrix = predict_annotations(chromagram, model, device, batch_size=8)
     # apply median smoothing to ann_matrix
     annotations = compute_annotation(ann_matrix, hop_length, Fs, nonchord=nonchord)

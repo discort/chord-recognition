@@ -5,7 +5,7 @@ import numpy as np
 from torch.utils.data import Dataset
 
 from .utils import convert_chord_ann_matrix, get_chord_labels, read_structure_annotation,\
-    convert_chord_label, convert_ann_to_seq_label, compute_chromagram, read_audio
+    convert_chord_label, convert_ann_to_seq_label, compute_chromagram, read_audio, log_compression
 
 
 class ContextIterator:
@@ -93,6 +93,7 @@ class AudioDataset(ChromaDataset):
                                         Fs=Fs,
                                         window_size=self.window_size,
                                         hop_length=self.hop_length)
+        chromagram = log_compression(chromagram)
         N_X = chromagram.shape[1]
         Fs_X = Fs / self.hop_length
 
@@ -148,6 +149,7 @@ class MirexFameDataset(ChromaDataset):
                                         Fs=sampling_rate,
                                         window_size=self.window_size,
                                         hop_length=self.hop_length)
+        chromagram = log_compression(chromagram)
         N_X = chromagram.shape[1]
         Fs_X = sampling_rate / self.hop_length
 
