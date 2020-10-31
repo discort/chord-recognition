@@ -45,6 +45,19 @@ def read_csv(fn, header=False, add_label=False, sep=' '):
     return df
 
 
+def exponential_smoothing(series, alpha):
+    """given a series and alpha, return series of expoentially smoothed points"""
+    results = np.zeros_like(series)
+
+    # first value remains the same as series,
+    # as there is no history to learn from
+    results[0] = series[0]
+    for t in range(1, series.shape[0]):
+        results[t] = alpha * series[t] + (1 - alpha) * results[t - 1]
+
+    return results
+
+
 def log_compression(v, gamma=1):
     """Logarithmically compresses a value or array
 

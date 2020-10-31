@@ -7,7 +7,8 @@ from torch.utils.data import BatchSampler, SequentialSampler
 import torch.nn.functional as F
 
 from chord_recognition.dataset import ContextIterator
-from chord_recognition.utils import compute_chromagram, compute_annotation, log_compression
+from chord_recognition.utils import compute_chromagram, compute_annotation, log_compression, \
+    exponential_smoothing
 from .cnn import model
 
 CURR_DIR = os.path.dirname(__file__)
@@ -31,12 +32,22 @@ def predict_annotations(spectrogram, model, device, batch_size=32, context_size=
         scores = model(inputs)
         scores = criterion(scores)
         scores = scores.squeeze(3).squeeze(2)
+        scores = batch_exponential_smoothing(scores, 0.1)
         result.append(scores)
 
     result = torch.cat(result)
     preds = torch.argmax(result, 1)
     result = F.one_hot(preds, num_classes).t_()
     return result.data.numpy()
+
+
+def batch_exponential_smoothing(x, alpha):
+    batsches, _ = x.shape
+    result = []
+    for i in range(batsches):
+        x_smooth = exponential_smoothing(x[i, :].numpy(), alpha)
+        result.append(torch.from_numpy(x_smooth))
+    return torch.stack(result)
 
 
 def annotate_audio(audio_waveform, Fs, window_size=8192, hop_length=4096, nonchord=True):

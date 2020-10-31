@@ -9,12 +9,9 @@ def test_annotate_audio():
         audio_waveform, Fs = read_audio_from_stream(f)
     result = annotate_audio(audio_waveform, Fs=Fs, nonchord=True)
     expected = [
-        (0.0, 2.0434, 'N'),
-        (2.0434, 2.1362, 'C'),
-        (2.1362, 2.7864, 'N'),
-        (2.7864, 2.9722, 'C'),
-        (2.9722, 4.9226, 'N'),
-        (4.9226, 5.2013, 'A'),
-        (5.2013, 6.3158, 'N')
+        (0.0, 1.6718, 'N'),
+        (1.6718, 3.3437, 'C'),
+        (3.3437, 5.1084, 'N'),
+        (5.1084, 6.0372, 'Am')
     ]
     assert result == expected
