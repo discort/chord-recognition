@@ -47,6 +47,34 @@ class ContextIterator:
         return self.data[:, start:end]
 
 
+def context_window(x, context_size):
+    assert context_size % 2 == 1, "context_size must be odd"
+    pad_number = context_size
+    left_pad_idx = pad_number
+    M, N = x.shape
+    dtype = x.dtype
+    #result = np.zeros((N, M, 2 * context_size + 1))
+    result = []
+    right_pad_idx = 1
+    for i in range(N):
+        if i - pad_number < 0:
+            right = x[:, range(0, i + pad_number + 1)]
+            left_pad = x[:, :left_pad_idx]
+            window = np.concatenate([left_pad, right], axis=1)
+            left_pad_idx -= 1
+        elif i + pad_number >= N:
+            left = x[:, range(i - pad_number, N)]
+            right_pad = x[:, -right_pad_idx:]
+            window = np.concatenate([left, right_pad], axis=1)
+            right_pad_idx += 1
+        else:
+            indexes = list(range(i - pad_number, i)) + list(range(i, i + pad_number + 1))
+            window = x[:, indexes]
+        #result[i, :, :] = window
+        result.append(window.astype(dtype))
+    return result
+
+
 class ChromaDataset(Dataset):
     def __len__(self):
         raise NotImplemented

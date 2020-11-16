@@ -8,8 +8,10 @@ import pandas as pd
 
 warnings.filterwarnings("ignore")
 
+DEFAULT_EXT_MINOR = 'm'
 
-def get_chord_labels(ext_minor='m', nonchord=False):
+
+def get_chord_labels(ext_minor=None, nonchord=False):
     """Generate chord labels for major and minor triads (and possibly non-chord label)
 
     Args:
@@ -18,6 +20,8 @@ def get_chord_labels(ext_minor='m', nonchord=False):
     Returns:
         chord_labels: List of chord labels
     """
+    if ext_minor is None:
+        ext_minor = DEFAULT_EXT_MINOR
     chroma_labels = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
     chord_labels_maj = chroma_labels
     chord_labels_min = [s + ext_minor for s in chroma_labels]
@@ -275,38 +279,18 @@ def read_audio(path, Fs=None, mono=False, duration=None):
     return librosa.load(path, sr=Fs, mono=mono, duration=duration)
 
 
-def read_audio_from_stream(stream, Fs=None, mono=False, duration=None):
-    """Reads an audio file from stream.
-    Since librosa does not support reading mp3 in buffer.
-    https://github.com/librosa/librosa/pull/1066
-
-    Args:
-        path: Path to audio file
-        Fs: Resample audio to given sampling rate. Use native sampling rate if None.
-        mono: Convert multi-channel file to mono (bool)
-        duration: only load up to this much audio (in seconds)
-
-    Returns:
-        x: Audio time series (np.ndarray [shape=(n,))
-        Fs: Sampling rate
-    """
-    with tempfile.NamedTemporaryFile() as ntf:
-        ntf.write(stream.read())
-        return read_audio(ntf.name, Fs, mono, duration)
-
-
-def compute_annotation(ann_matrix, hop_length, Fs, nonchord=False):
+def compute_annotation(ann_matrix, hop_length, Fs, ext_minor=None, nonchord=False):
     # Convert one-hot repr to label repr (25, 2822) -> (2822, 1)
     # Convert sequence annotation list ([s,t,'label'])
     # Convert list to structure annotation [3055, 3076, 'N'] -> (283.724286, 285.666644, 'N')]
-    label_seq = convert_annotation_matrix(ann_matrix, nonchord=True)
+    label_seq = convert_annotation_matrix(ann_matrix, ext_minor=ext_minor, nonchord=True)
     ann_seg = convert_label_sequence(label_seq)
     Fs_X = Fs / hop_length
     ann = convert_annotation_segments(ann_seg, Fs=Fs_X)
     return ann
 
 
-def convert_annotation_matrix(ann_matrix, nonchord=False):
+def convert_annotation_matrix(ann_matrix, ext_minor=None, nonchord=False):
     """Converts annotation matrix to sequence of labels
 
     Args:
@@ -315,7 +299,7 @@ def convert_annotation_matrix(ann_matrix, nonchord=False):
     Returns:
         labels_sec: list of labels sequences
     """
-    chord_labels = get_chord_labels(nonchord=nonchord)
+    chord_labels = get_chord_labels(ext_minor, nonchord=nonchord)
 
     labels_sec = []
     N = ann_matrix.shape[1]

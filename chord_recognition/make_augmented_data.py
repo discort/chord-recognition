@@ -5,9 +5,9 @@ import os.path
 import pandas as pd
 from torch.utils.data import DataLoader, ConcatDataset, SequentialSampler
 
-from augmentations import SemitoneShift
-from dataset import MirexFameDataset
-from utils import get_chord_labels
+from .augmentations import SemitoneShift
+from .dataset import MirexFameDataset
+from .utils import get_chord_labels
 
 
 def save_data(df, dir_path='data/augmented'):
@@ -37,12 +37,21 @@ def make_frame_df(data_source):
     frame_labels = []
     for idx in sampler:
         data, labels = sampler.data_source[idx]
-        frame_label = next(itertools.compress(chord_labels, labels))
-        frame_labels.append(frame_label)
+        if labels.ndim == 2:
+            for i in range(labels.shape[0]):
+                if not labels[i, :].any():
+                    continue
+                frame_label = next(itertools.compress(chord_labels, labels[i, :]))
+                frame_labels.append(frame_label)
+        elif labels.ndim == 1:
+            frame_label = next(itertools.compress(chord_labels, labels))
+            frame_labels.append(frame_label)
+        else:
+            raise ValueError("Dimensions must be less than 2")
 
     df = pd.DataFrame(frame_labels, columns=('label',))
     df['prev_label'] = df.label.shift(1)
-    df['to_remove'] = df.apply(lambda x: _mark_to_remove(x), axis=1)
+    # df['to_remove'] = df.apply(lambda x: _mark_to_remove(x), axis=1)
     # df = df[df.to_remove == 0]
     return df
 
@@ -55,7 +64,8 @@ def main():
                              ann_dir='data/queen/chordlabs/',
                              window_size=8192, hop_length=4096, context_size=7)
     dataset = ConcatDataset([dataset, queen])
-    augmented = SemitoneShift(dataset, p=1.0, max_shift=4, bins_per_semitone=2)
+    loader_train = DataLoader(dataset, shuffle=True, num_workers=0, batch_size=32)
+    augmented = SemitoneShift(loader_train, p=1.0, max_shift=4, bins_per_semitone=2)
     df = make_frame_df(augmented)
     save_data(df)
 

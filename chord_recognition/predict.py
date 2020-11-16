@@ -6,7 +6,7 @@ import torch.nn as nn
 from torch.utils.data import BatchSampler, SequentialSampler
 import torch.nn.functional as F
 
-from chord_recognition.dataset import ContextIterator
+from chord_recognition.dataset import ContextIterator, context_window
 from chord_recognition.utils import compute_chromagram, compute_annotation, log_compression, \
     exponential_smoothing
 from .cnn import model
@@ -22,20 +22,21 @@ model.eval()
 @torch.no_grad()
 def predict_annotations(spectrogram, model, device, batch_size=32, context_size=7, num_classes=25):
     criterion = nn.Softmax(dim=1)
-    container = ContextIterator(spectrogram, context_size)
-    frames = np.asarray([f.reshape(1, *f.shape) for f in container])
+    # ToDo:
+    # - vectorize funtions (get frame matrix)
+    frames = context_window(spectrogram, context_size)
+    frames = np.asarray([f.reshape(1, *f.shape) for f in frames])
 
     sampler = BatchSampler(SequentialSampler(frames), batch_size=batch_size, drop_last=False)
-    result = []
+    result = torch.zeros(spectrogram.shape[1], num_classes)
     for idx in sampler:
         inputs = torch.from_numpy(frames[idx]).to(device=device, dtype=torch.float32)
         scores = model(inputs)
         scores = criterion(scores)
         scores = scores.squeeze(3).squeeze(2)
         scores = batch_exponential_smoothing(scores, 0.1)
-        result.append(scores)
+        result[idx, :] = scores
 
-    result = torch.cat(result)
     preds = torch.argmax(result, 1)
     result = F.one_hot(preds, num_classes).t_()
     return result.data.numpy()
@@ -50,23 +51,26 @@ def batch_exponential_smoothing(x, alpha):
     return torch.stack(result)
 
 
-def annotate_audio(audio_waveform, Fs, window_size=8192, hop_length=4096, nonchord=True):
+def annotate_audio(audio_waveform, Fs, window_size=8192, hop_length=4096,
+                   ext_minor=None, nonchord=True):
     """Calculate the annotation of specified audio file
+
+    - calculates spectrogram
+    - applies filterbanks
+    - logarithmise the filtered magnitudes to compress the value range
+    - compute annotation matrix
+    - apply exponential smoothing
+    - convert annotation matrix to basic ann representation
 
     Args:
         audio_waveform: Audio time series (np.ndarray [shape=(n,))
         Fs: Sampling rate (int)
+        ext_minor: label is used for a minor chord ('m' by default)
         nonchord: include or exclude non-chord class (bool)
 
     Returns:
         annotation: annotated file in format [(start, end, label), ...]
     """
-    # calculate spectrogram
-    # apply filterbanks
-    # logarithmise the filtered magnitudes to compress the value range
-    # compute annotation matrix
-    # apply moving average smoothing
-    # convert annotation matrix to basic ann representation
     chromagram = compute_chromagram(
         audio_waveform=audio_waveform,
         Fs=Fs,
@@ -74,6 +78,6 @@ def annotate_audio(audio_waveform, Fs, window_size=8192, hop_length=4096, noncho
         hop_length=hop_length)
     chromagram = log_compression(chromagram)
     ann_matrix = predict_annotations(chromagram, model, device, batch_size=8)
-    # apply median smoothing to ann_matrix
-    annotations = compute_annotation(ann_matrix, hop_length, Fs, nonchord=nonchord)
+    annotations = compute_annotation(
+        ann_matrix, hop_length, Fs, ext_minor=ext_minor, nonchord=nonchord)
     return annotations

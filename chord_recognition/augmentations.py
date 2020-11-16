@@ -1,6 +1,7 @@
 import random
 
 import numpy as np
+import torch
 from torch.utils.data import Dataset
 
 
@@ -42,6 +43,8 @@ class SemitoneShift(Dataset):
 
     def _init_data(self, dataset_iterator):
         for data, targets in dataset_iterator:
+            data = data.numpy()
+            targets = targets.numpy()
             batch_size = len(data)
 
             shifts = np.random.randint(-self.max_shift,
@@ -59,7 +62,7 @@ class SemitoneShift(Dataset):
                 new_data[i] = np.roll(
                     data[i], shifts[i] * self.bins_per_semitone, axis=-1)
 
-            self._frames.append((new_data, new_targets))
+            self._frames.append((torch.from_numpy(new_data), torch.from_numpy(new_targets)))
 
     def adapt_targets(self, targets, shifts):
         chord_classes = targets.argmax(-1)
