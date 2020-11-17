@@ -3,10 +3,19 @@ import os.path
 import random
 
 import numpy as np
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, ConcatDataset
 
 from .utils import convert_chord_ann_matrix, get_chord_labels, read_structure_annotation,\
     convert_chord_label, convert_ann_to_seq_label, compute_chromagram, read_audio, log_compression
+
+
+def flatten_iterator(data_source):
+    result = []
+    for inputs, targets in data_source:
+        batch_size = inputs.shape[0]
+        data = zip(np.array_split(inputs, batch_size), np.array_split(targets, batch_size))
+        result.extend(data)
+    return [(i.squeeze(0), t.squeeze(0)) for i, t in result]
 
 
 def iterate_batches(data_source, batch_size, shuffle=False, expand=True):
@@ -39,7 +48,15 @@ def iterate_batches(data_source, batch_size, shuffle=False, expand=True):
             batch_idxs += random.sample(idxs[:start_idx], n_missing)
 
         start_idx += batch_size
-        yield data_source[batch_idxs]
+        result_inputs = []
+        result_targets = []
+        for i in batch_idxs:
+            inputs, targets = data_source[i]
+            result_inputs.append(inputs)
+            result_targets.append(targets)
+        yield np.stack(result_inputs), np.stack(result_targets)
+        # Concatdataset does not support list indexing
+        #yield data_source[batch_idxs]
 
 
 class BatchIterator:
@@ -220,7 +237,7 @@ class ChromaDataset(MirDataset):
             frame = self._frames[0]
             batch_size = len(idx)
             result_inputs = np.empty((batch_size, *frame[0].shape))
-            result_targets = np.empty((batch_size, *frame[1].shape))
+            result_targets = np.empty((batch_size, *frame[1].shape), dtype=np.int64)
             for i, batch_idx in enumerate(idx):
                 result_inputs[i, :] = self._frames[batch_idx][0]
                 result_targets[i, :] = self._frames[batch_idx][1]
