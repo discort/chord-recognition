@@ -1,11 +1,60 @@
 import os
 import os.path
+import random
 
 import numpy as np
 from torch.utils.data import Dataset
 
 from .utils import convert_chord_ann_matrix, get_chord_labels, read_structure_annotation,\
     convert_chord_label, convert_ann_to_seq_label, compute_chromagram, read_audio, log_compression
+
+
+def iterate_batches(data_source, batch_size, shuffle=False, expand=True):
+    """
+    Generates mini-batches from a data source.
+    Args:
+        data_source - Data source to generate mini-batches from
+        batch_size : int - Number of data points and targets in each mini-batch
+        shuffle : bool - Indicates whether to randomize the items in each mini-batch
+    expand : bool
+        Indicates whether to fill up the last mini-batch with
+        random data points if there is not enough data available.
+    Returns:
+        mini-batch of data and targets
+    """
+
+    idxs = list(range(len(data_source)))
+
+    if shuffle:
+        random.shuffle(idxs)
+
+    start_idx = 0
+    while start_idx < len(data_source):
+        batch_idxs = idxs[start_idx:start_idx + batch_size]
+
+        # last batch could be too small
+        if len(batch_idxs) < batch_size and expand:
+            # fill up with random indices not yet in the set
+            n_missing = batch_size - len(batch_idxs)
+            batch_idxs += random.sample(idxs[:start_idx], n_missing)
+
+        start_idx += batch_size
+        yield data_source[batch_idxs]
+
+
+class BatchIterator:
+    """
+    Iterates over mini batches of a data source.
+    """
+
+    def __init__(self, data_source, batch_size, shuffle=False, expand=False):
+        self.data_source = data_source
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.expand = expand
+
+    def __iter__(self):
+        return iterate_batches(self.data_source, self.batch_size, self.shuffle, self.expand)
 
 
 class ContextIterator:
@@ -75,7 +124,7 @@ def context_window(x, context_size):
     return result
 
 
-class ChromaDataset(Dataset):
+class MirDataset(Dataset):
     def __len__(self):
         raise NotImplemented
 
@@ -96,7 +145,7 @@ class ChromaDataset(Dataset):
         return ann_list
 
 
-class AudioDataset(ChromaDataset):
+class AudioDataset(MirDataset):
     def __init__(self, audio_dir, ann_dir, window_size=4096, hop_length=2048):
         """
         Args:
@@ -140,29 +189,42 @@ class AudioDataset(ChromaDataset):
         return sample
 
 
-class MirexFameDataset(ChromaDataset):
-    def __init__(self, audio_dir, ann_dir, window_size=4096, hop_length=2048, context_size=None):
+class ChromaDataset(MirDataset):
+    def __init__(self, audio_dir, ann_dir, window_size=4096,
+                 hop_length=2048, n_chroma=105):
         """
         Args:
             audio_dir (string): Path to audio dir
             ann_dir (string): Path to the dir with csv annotations.
+            n_chroma: int - number of chroma features
         """
         self.audio_dir = audio_dir
         self.ann_dir = ann_dir
         self.window_size = window_size
         self.hop_length = hop_length
+        self.n_chroma = n_chroma
         self.ann_list = self._build_ann_list()
-        self.context_size = context_size
         self.chord_labels = get_chord_labels(ext_minor='m', nonchord=True)
+        self.num_classes = len(self.chord_labels)
         self._frames = []
-        self.frame_iterator_class = ContextIterator
+        self.context_size = 7
         self._init_dataset()
 
     def __len__(self):
         return len(self._frames)
 
     def __getitem__(self, idx):
-        return self._frames[idx]
+        if isinstance(idx, int):
+            return self._frames[idx]
+        elif isinstance(idx, list):
+            frame = self._frames[0]
+            batch_size = len(idx)
+            result_inputs = np.empty((batch_size, *frame[0].shape))
+            result_targets = np.empty((batch_size, *frame[1].shape))
+            for i, batch_idx in enumerate(idx):
+                result_inputs[i, :] = self._frames[batch_idx][0]
+                result_targets[i, :] = self._frames[batch_idx][1]
+            return result_inputs, result_targets
 
     def _init_dataset(self):
         for filename in self.ann_list:
@@ -175,6 +237,7 @@ class MirexFameDataset(ChromaDataset):
 
         chromagram = compute_chromagram(audio_waveform=audio_waveform,
                                         Fs=sampling_rate,
+                                        n_chroma=self.n_chroma,
                                         window_size=self.window_size,
                                         hop_length=self.hop_length)
         chromagram = log_compression(chromagram)
@@ -185,18 +248,19 @@ class MirexFameDataset(ChromaDataset):
         ann_matrix, _, _, _, _ = convert_chord_ann_matrix(
             fn_ann=ann_path, chord_labels=self.chord_labels, Fs=Fs_X, N=N_X, last=False)
 
-        container = self.frame_iterator_class(chromagram, self.context_size)
         result = []
+        #container = context_window(chromagram, self.context_size)
+        container = ContextIterator(chromagram, self.context_size)
         for frame, idx_target in zip(container, range(N_X)):
             #label = np.argmax(ann_matrix[:, idx_target])
-            label = ann_matrix[:, idx_target].astype('long')
-            if not np.any(label):  # Exclude unlabeled data (not majmin)
+            label = ann_matrix[:, idx_target]
+            if not np.any(label):  # Exclude unlabeled data
                 continue
             result.append((frame.reshape(1, *frame.shape), label))
         return result
 
 
-class FrameLabelDataset(ChromaDataset):
+class FrameLabelDataset(MirDataset):
     def __init__(self, audio_dir, ann_dir, window_size=4096, hop_length=2048):
         self.audio_dir = audio_dir
         self.ann_dir = ann_dir

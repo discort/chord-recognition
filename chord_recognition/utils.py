@@ -225,7 +225,7 @@ def convert_chord_ann_matrix(fn_ann, chord_labels, Fs=1, N=None, last=False):
     ann_seg_frame = convert_sequence_ann(ann_frame, Fs=1)
 
     num_chords = len(chord_labels)
-    ann_matrix = np.zeros((num_chords, N))
+    ann_matrix = np.zeros((num_chords, N), dtype=np.int64)
     for n in range(N):
         label = ann_frame[n]
         # Generates a one-entry only for labels that are contained in "chord_labels"

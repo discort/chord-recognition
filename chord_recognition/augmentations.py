@@ -1,8 +1,6 @@
 import random
 
 import numpy as np
-import torch
-from torch.utils.data import Dataset
 
 
 def one_hot(class_ids, num_classes):
@@ -16,7 +14,7 @@ def one_hot(class_ids, num_classes):
     Returns:
         one-hot encoding of class ids
     """
-    oh = np.zeros((len(class_ids), num_classes), dtype=np.float32)
+    oh = np.zeros((len(class_ids), num_classes), dtype=np.int64)
     oh[np.arange(len(class_ids)), class_ids] = 1
 
     # make sure one-hot encoding corresponds to class ids
@@ -27,24 +25,22 @@ def one_hot(class_ids, num_classes):
     return oh
 
 
-class SemitoneShift(Dataset):
-    def __init__(self, dataset_iterator, p, max_shift, bins_per_semitone):
+class SemitoneShift:
+    """
+        Augmenter that shifts by semitones a spectrum with logarithmically
+        spaced frequency bins.
+        :param p: percentage of data to be shifted
+        :param max_shift: maximum number of semitones to shift
+        :param bins_per_semitone: number of spectrogram bins per semitone
+    """
+
+    def __init__(self, p, max_shift, bins_per_semitone):
         self.p = p
         self.max_shift = max_shift
         self.bins_per_semitone = bins_per_semitone
-        self._frames = []
-        self._init_data(dataset_iterator)
 
-    def __len__(self):
-        return len(self._frames)
-
-    def __getitem__(self, idx):
-        return self._frames[idx]
-
-    def _init_data(self, dataset_iterator):
-        for data, targets in dataset_iterator:
-            data = data.numpy()
-            targets = targets.numpy()
+    def __call__(self, batch_iterator):
+        for data, targets in batch_iterator:
             batch_size = len(data)
 
             shifts = np.random.randint(-self.max_shift,
@@ -61,8 +57,7 @@ class SemitoneShift(Dataset):
             for i in range(batch_size):
                 new_data[i] = np.roll(
                     data[i], shifts[i] * self.bins_per_semitone, axis=-1)
-
-            self._frames.append((torch.from_numpy(new_data), torch.from_numpy(new_targets)))
+            yield new_data, new_targets
 
     def adapt_targets(self, targets, shifts):
         chord_classes = targets.argmax(-1)
@@ -75,4 +70,4 @@ class SemitoneShift(Dataset):
         new_chord_classes = new_chord_roots + chord_majmin * 12
         new_chord_classes[no_chords] = no_chord_class_index
         new_targets = one_hot(new_chord_classes, no_chord_class_index + 1)
-        return new_targets.squeeze().astype('long')
+        return new_targets
