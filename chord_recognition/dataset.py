@@ -169,6 +169,7 @@ class ContextIterator:
 
 def context_window(x, context_size):
     assert context_size % 2 == 1, "context_size must be odd"
+    assert x.shape[1] > 2 * context_size + 1, "Low size x"
     pad_number = context_size
     left_pad_idx = pad_number
     M, N = x.shape
@@ -325,9 +326,10 @@ class ChromaDataset(MirDataset):
             fn_ann=ann_path, chord_labels=self.chord_labels, Fs=Fs_X, N=N_X, last=False)
 
         # Exclude unlabeled data
-        zero_indices = np.where(np.all(ann_matrix == 0, axis=0))[0]
-        chromagram = chromagram[:, ~zero_indices]
-        ann_matrix = ann_matrix[:, ~zero_indices]
+        zero_indices = np.all(ann_matrix == 0, axis=0)
+        if zero_indices.any():
+            chromagram = chromagram[:, ~zero_indices]
+            ann_matrix = ann_matrix[:, ~zero_indices]
 
         if self.transform:
             chromagram, ann_matrix = self.transform((chromagram.T, ann_matrix.T))
@@ -335,8 +337,7 @@ class ChromaDataset(MirDataset):
 
         result = []
         container = context_window(chromagram, self.context_size)
-        # container = ContextIterator(chromagram, self.context_size)
-        for frame, idx_target in zip(container, range(N_X)):
+        for frame, idx_target in zip(container, range(chromagram.shape[1])):
             label = ann_matrix[:, idx_target]
             result.append((frame.reshape(1, *frame.shape), label))
         return result
