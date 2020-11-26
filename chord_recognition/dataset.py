@@ -8,6 +8,8 @@ from torch.utils.data import Dataset, ConcatDataset
 from .utils import convert_chord_ann_matrix, get_chord_labels, read_structure_annotation,\
     convert_chord_label, convert_ann_to_seq_label, compute_chromagram, read_audio, log_compression
 
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+
 
 def flatten_iterator(data_source):
     result = []
@@ -16,6 +18,58 @@ def flatten_iterator(data_source):
         data = zip(np.array_split(inputs, batch_size), np.array_split(targets, batch_size))
         result.extend(data)
     return [(i.squeeze(0), t.squeeze(0)) for i, t in result]
+
+
+def split_datasource(datasource, lengths):
+    """
+    Split a datasource into non-overlapping new datasources of given lengths
+    """
+    from torch import randperm
+    from torch._utils import _accumulate
+    if sum(lengths) != len(datasource):
+        raise ValueError("Sum of input lengths does not equal the length of the input datasource")
+
+    indices = randperm(sum(lengths)).tolist()
+    return [[datasource[i] for i in indices[offset - length: offset]]
+            for offset, length in zip(_accumulate(lengths), lengths)]
+
+
+def prepare_datasource(datasets):
+    """
+    Prepares data for Pytorch Dataset.
+    Walks through each dir dataset and collects labeled and source files.
+
+    Args:
+        datasets:iterable - dir names that contain labels and source files
+
+    Returns:
+        result: list of tuples in [(path_to_label:path_to_source)] notation
+    """
+    datasource = []
+    data_dir = os.path.join(BASE_DIR, 'data')
+    for ds_name in datasets:
+        data_source_dir = os.path.join(data_dir, ds_name)
+        lab_files = collect_files(dir_path=os.path.join(data_source_dir, 'chordlabs'), ext='.lab')
+        audio_files = collect_files(dir_path=os.path.join(data_source_dir, 'mp3'), ext='.mp3')
+        if len(lab_files) != len(audio_files):
+            raise ValueError(f"{ds_name} has different len of lab and mp3 files")
+
+        lab_audio = [(lab, audio) for lab, audio in zip(lab_files, audio_files)]
+        datasource.extend(lab_audio)
+    return datasource
+
+
+def collect_files(dir_path, ext='.lab', excluded_files=()):
+    files = []
+    for root, dirs, filenames in os.walk(dir_path):
+        for filename in filenames:
+            if any(f in filename for f in excluded_files):
+                continue
+            if not filename.endswith(ext):
+                continue
+            file_path = os.path.join(root, filename)
+            files.append(file_path)
+    return files
 
 
 def iterate_batches(data_source, batch_size, shuffle=False, expand=True):
@@ -207,24 +261,29 @@ class AudioDataset(MirDataset):
 
 
 class ChromaDataset(MirDataset):
-    def __init__(self, audio_dir, ann_dir, window_size=4096,
-                 hop_length=2048, n_chroma=105):
+    def __init__(self, datasource, window_size=4096,
+                 hop_length=2048, n_chroma=105, transform=None):
         """
         Args:
+            datasource: list of tuples - label:source file path notation
             audio_dir (string): Path to audio dir
             ann_dir (string): Path to the dir with csv annotations.
             n_chroma: int - number of chroma features
+            transform (callable, optional): Optional transform to be applied
+                on a sample.
         """
-        self.audio_dir = audio_dir
-        self.ann_dir = ann_dir
+        # self.audio_dir = audio_dir
+        # self.ann_dir = ann_dir
+        self.datasource = datasource
         self.window_size = window_size
         self.hop_length = hop_length
         self.n_chroma = n_chroma
-        self.ann_list = self._build_ann_list()
+        #self.ann_list = self._build_ann_list()
         self.chord_labels = get_chord_labels(ext_minor='m', nonchord=True)
         self.num_classes = len(self.chord_labels)
         self._frames = []
         self.context_size = 7
+        self.transform = transform
         self._init_dataset()
 
     def __len__(self):
@@ -244,12 +303,12 @@ class ChromaDataset(MirDataset):
             return result_inputs, result_targets
 
     def _init_dataset(self):
-        for filename in self.ann_list:
-            audio_frames = self._init_audio(filename)
+        for ann_path, audio_path in self.datasource:
+            audio_frames = self._init_audio(ann_path, audio_path)
             self._frames.extend(audio_frames)
 
-    def _init_audio(self, filename):
-        audio_path = os.path.join(self.audio_dir, filename + '.mp3')
+    def _init_audio(self, ann_path, audio_path):
+        #audio_path = os.path.join(self.audio_dir, filename + '.mp3')
         audio_waveform, sampling_rate = read_audio(audio_path, Fs=None, mono=True)
 
         chromagram = compute_chromagram(audio_waveform=audio_waveform,
@@ -261,18 +320,24 @@ class ChromaDataset(MirDataset):
         N_X = chromagram.shape[1]
         Fs_X = sampling_rate / self.hop_length
 
-        ann_path = os.path.join(self.ann_dir, filename + '.lab')
+        # ann_path = os.path.join(self.ann_dir, filename + '.lab')
         ann_matrix, _, _, _, _ = convert_chord_ann_matrix(
             fn_ann=ann_path, chord_labels=self.chord_labels, Fs=Fs_X, N=N_X, last=False)
 
+        # Exclude unlabeled data
+        zero_indices = np.where(np.all(ann_matrix == 0, axis=0))[0]
+        chromagram = chromagram[:, ~zero_indices]
+        ann_matrix = ann_matrix[:, ~zero_indices]
+
+        if self.transform:
+            chromagram, ann_matrix = self.transform((chromagram.T, ann_matrix.T))
+            chromagram, ann_matrix = chromagram.T, ann_matrix.T
+
         result = []
-        #container = context_window(chromagram, self.context_size)
-        container = ContextIterator(chromagram, self.context_size)
+        container = context_window(chromagram, self.context_size)
+        # container = ContextIterator(chromagram, self.context_size)
         for frame, idx_target in zip(container, range(N_X)):
-            #label = np.argmax(ann_matrix[:, idx_target])
             label = ann_matrix[:, idx_target]
-            if not np.any(label):  # Exclude unlabeled data
-                continue
             result.append((frame.reshape(1, *frame.shape), label))
         return result
 

@@ -40,24 +40,26 @@ class SemitoneShift:
         self.bins_per_semitone = bins_per_semitone
 
     def __call__(self, batch_iterator):
-        for data, targets in batch_iterator:
-            batch_size = len(data)
+        #for data, targets in batch_iterator:
+        data, targets = batch_iterator
+        batch_size = len(data)
 
-            shifts = np.random.randint(-self.max_shift,
-                                       self.max_shift + 1, batch_size)
+        shifts = np.random.randint(-self.max_shift,
+                                   self.max_shift + 1, batch_size)
 
-            # zero out shifts for 1-p percentage
-            no_shift = random.sample(range(batch_size),
-                                     int(batch_size * (1 - self.p)))
-            shifts[no_shift] = 0
+        # zero out shifts for 1-p percentage
+        no_shift = random.sample(range(batch_size),
+                                 int(batch_size * (1 - self.p)))
+        shifts[no_shift] = 0
 
-            new_targets = self.adapt_targets(targets, shifts)
+        new_targets = self.adapt_targets(targets, shifts)
 
-            new_data = np.empty_like(data)
-            for i in range(batch_size):
-                new_data[i] = np.roll(
-                    data[i], shifts[i] * self.bins_per_semitone, axis=-1)
-            yield new_data, new_targets
+        new_data = np.empty_like(data)
+        for i in range(batch_size):
+            new_data[i] = np.roll(
+                data[i], shifts[i] * self.bins_per_semitone, axis=-1)
+        #yield new_data, new_targets
+        return new_data, new_targets
 
     def adapt_targets(self, targets, shifts):
         chord_classes = targets.argmax(-1)
