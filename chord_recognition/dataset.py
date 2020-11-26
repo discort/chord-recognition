@@ -331,14 +331,17 @@ class ChromaDataset(MirDataset):
             chromagram = chromagram[:, ~zero_indices]
             ann_matrix = ann_matrix[:, ~zero_indices]
 
-        if self.transform:
-            chromagram, ann_matrix = self.transform((chromagram.T, ann_matrix.T))
-            chromagram, ann_matrix = chromagram.T, ann_matrix.T
+        # if self.transform:
+        #     chromagram, ann_matrix = self.transform((chromagram.T, ann_matrix.T))
+        #     chromagram, ann_matrix = chromagram.T, ann_matrix.T
 
         result = []
         container = context_window(chromagram, self.context_size)
         for frame, idx_target in zip(container, range(chromagram.shape[1])):
             label = ann_matrix[:, idx_target]
+            if self.transform:
+                frame, label = self.transform((frame[np.newaxis], label[np.newaxis]))
+                frame, label = frame.squeeze(), label.squeeze()
             result.append((frame.reshape(1, *frame.shape), label))
         return result
 
