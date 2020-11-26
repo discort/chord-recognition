@@ -291,17 +291,24 @@ class ChromaDataset(MirDataset):
         return len(self._frames)
 
     def __getitem__(self, idx):
-        if isinstance(idx, int):
-            return self._frames[idx]
-        elif isinstance(idx, list):
-            frame = self._frames[0]
-            batch_size = len(idx)
-            result_inputs = np.empty((batch_size, *frame[0].shape))
-            result_targets = np.empty((batch_size, *frame[1].shape), dtype=np.int64)
-            for i, batch_idx in enumerate(idx):
-                result_inputs[i, :] = self._frames[batch_idx][0]
-                result_targets[i, :] = self._frames[batch_idx][1]
-            return result_inputs, result_targets
+        sample = self._frames[idx]
+        if self.transform:
+            frame, label = sample
+            frame, label = self.transform((frame, label[np.newaxis]))
+            label = label.squeeze()
+            return frame, label
+        return sample
+        # if isinstance(idx, int):
+        #     return self._frames[idx]
+        # elif isinstance(idx, list):
+        #     frame = self._frames[0]
+        #     batch_size = len(idx)
+        #     result_inputs = np.empty((batch_size, *frame[0].shape))
+        #     result_targets = np.empty((batch_size, *frame[1].shape), dtype=np.int64)
+        #     for i, batch_idx in enumerate(idx):
+        #         result_inputs[i, :] = self._frames[batch_idx][0]
+        #         result_targets[i, :] = self._frames[batch_idx][1]
+        #     return result_inputs, result_targets
 
     def _init_dataset(self):
         for ann_path, audio_path in self.datasource:
@@ -339,9 +346,6 @@ class ChromaDataset(MirDataset):
         container = context_window(chromagram, self.context_size)
         for frame, idx_target in zip(container, range(chromagram.shape[1])):
             label = ann_matrix[:, idx_target]
-            if self.transform:
-                frame, label = self.transform((frame[np.newaxis], label[np.newaxis]))
-                frame, label = frame.squeeze(), label.squeeze()
             result.append((frame.reshape(1, *frame.shape), label))
         return result
 
