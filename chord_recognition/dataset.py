@@ -291,13 +291,12 @@ class ChromaDataset(MirDataset):
         return len(self._frames)
 
     def __getitem__(self, idx):
-        sample = self._frames[idx]
+        sample, target = self._frames[idx]
         if self.transform:
-            frame, label = sample
-            frame, label = self.transform((frame, label[np.newaxis]))
-            label = label.squeeze()
-            return frame, label
-        return sample
+            sample, target = self.transform((sample, target[np.newaxis]))
+            target = target.squeeze()
+            return sample, target
+        return sample, target
         # if isinstance(idx, int):
         #     return self._frames[idx]
         # elif isinstance(idx, list):
