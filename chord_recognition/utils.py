@@ -72,7 +72,7 @@ def log_compression(v, gamma=1):
     Returns:
         v_compressed: Compressed value or array
     """
-    return np.log10(1 + gamma * v)
+    return np.log(1 + gamma * v)
 
 
 def convert_ann_to_seq_label(ann):
@@ -241,7 +241,7 @@ def compute_chromagram(audio_waveform, Fs, window_size=8192, hop_length=4096,
     Computes a chromagram from a waveform
 
     The quarter-tone spectrogram contains only bins corresponding to frequencies
-    between 65 Hz and 2100 Hz and has 24 bins per octave.
+    between Fmin=65Hz (~C2) and Fmax=2100Hz (~C7) and has 24 bins per octave.
     This results in a dimensionality of 105 bins
 
     Args:
@@ -305,7 +305,11 @@ def convert_annotation_matrix(ann_matrix, ext_minor=None, nonchord=False):
     N = ann_matrix.shape[1]
     for i in range(N):
         one_hot = ann_matrix[:, i]
-        label = next(itertools.compress(chord_labels, one_hot))
+        label = list(itertools.compress(chord_labels, one_hot))
+        if len(label) > 0:
+            label = label[0]
+        else:
+            label = 'N'
         labels_sec.append(label)
     return labels_sec
 

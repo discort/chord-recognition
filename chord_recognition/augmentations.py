@@ -25,6 +25,20 @@ def one_hot(class_ids, num_classes):
     return oh
 
 
+def shift_majmin_targets(targets, shifts):
+    chord_classes = targets.argmax(-1)
+    no_chord_class_index = targets.shape[-1] - 1
+    no_chords = (chord_classes == no_chord_class_index)
+    chord_roots = chord_classes % 12
+    chord_majmin = chord_classes // 12
+
+    new_chord_roots = (chord_roots + shifts) % 12
+    new_chord_classes = new_chord_roots + chord_majmin * 12
+    new_chord_classes[no_chords] = no_chord_class_index
+    new_targets = one_hot(new_chord_classes, no_chord_class_index + 1)
+    return new_targets
+
+
 class SemitoneShift:
     """
         Augmenter that shifts by semitones a spectrum with logarithmically
@@ -61,15 +75,6 @@ class SemitoneShift:
         #yield new_data, new_targets
         return new_data, new_targets
 
-    def adapt_targets(self, targets, shifts):
-        chord_classes = targets.argmax(-1)
-        no_chord_class_index = targets.shape[-1] - 1
-        no_chords = (chord_classes == no_chord_class_index)
-        chord_roots = chord_classes % 12
-        chord_majmin = chord_classes // 12
-
-        new_chord_roots = (chord_roots + shifts) % 12
-        new_chord_classes = new_chord_roots + chord_majmin * 12
-        new_chord_classes[no_chords] = no_chord_class_index
-        new_targets = one_hot(new_chord_classes, no_chord_class_index + 1)
-        return new_targets
+    @staticmethod
+    def adapt_targets(targets, shifts):
+        return shift_majmin_targets(targets, shifts)

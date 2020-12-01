@@ -292,10 +292,10 @@ class ChromaDataset(MirDataset):
 
     def __getitem__(self, idx):
         sample, target = self._frames[idx]
-        if self.transform:
-            sample, target = self.transform((sample, target[np.newaxis]))
-            target = target.squeeze()
-            return sample, target
+        # if self.transform:
+        #     sample, target = self.transform((sample, target[np.newaxis]))
+        #     target = target.squeeze()
+        #     return sample, target
         return sample, target
         # if isinstance(idx, int):
         #     return self._frames[idx]
@@ -337,10 +337,6 @@ class ChromaDataset(MirDataset):
             chromagram = chromagram[:, ~zero_indices]
             ann_matrix = ann_matrix[:, ~zero_indices]
 
-        # if self.transform:
-        #     chromagram, ann_matrix = self.transform((chromagram.T, ann_matrix.T))
-        #     chromagram, ann_matrix = chromagram.T, ann_matrix.T
-
         result = []
         container = context_window(chromagram, self.context_size)
         for frame, idx_target in zip(container, range(chromagram.shape[1])):
@@ -350,11 +346,8 @@ class ChromaDataset(MirDataset):
 
 
 class FrameLabelDataset(MirDataset):
-    def __init__(self, audio_dir, ann_dir, window_size=4096, hop_length=2048):
-        self.audio_dir = audio_dir
+    def __init__(self, ann_dir):
         self.ann_dir = ann_dir
-        self.window_size = window_size
-        self.hop_length = hop_length
         self.ann_list = self._build_ann_list()
         self.chord_labels = get_chord_labels(ext_minor='m', nonchord=True)
         self.labels = []
@@ -372,12 +365,8 @@ class FrameLabelDataset(MirDataset):
             self.labels.extend(labels)
 
     def _get_labels(self, filename):
-        audio_path = os.path.join(self.audio_dir, filename + '.mp3')
-        _, sampling_rate = read_audio(audio_path, Fs=None, mono=True)
-        Fs_X = sampling_rate / self.hop_length
-
         ann_path = os.path.join(self.ann_dir, filename + '.lab')
-        ann_seg_ind = read_structure_annotation(ann_path, Fs=Fs_X, index=True)
+        ann_seg_ind = read_structure_annotation(ann_path, index=True)
         ann_seg_ind = convert_chord_label(ann_seg_ind)
         result = convert_ann_to_seq_label(ann_seg_ind)
         return result
