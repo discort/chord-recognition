@@ -1,6 +1,7 @@
 import random
 
 import numpy as np
+from scipy.ndimage import shift
 
 
 def one_hot(class_ids, num_classes):
@@ -78,3 +79,45 @@ class SemitoneShift:
     @staticmethod
     def adapt_targets(targets, shifts):
         return shift_majmin_targets(targets, shifts)
+
+
+class DetuningShift:
+
+    def __init__(self, p, max_shift, bins_per_semitone):
+        """
+        Augmenter that shifts a spectrogram with logarithmically spaced
+        frequency bins by maximum 0.5 semitones
+        :param p: percentage of data to be shifted
+        :param max_shift: maximum fraction of semitone to shirt (<= 0.5)
+        :param bins_per_semitone: number of spectrogram bins per semitone
+        """
+        if max_shift >= 0.5:
+            raise ValueError('Detuning only works up to half a semitone!')
+        self.p = p
+        self.max_shift = max_shift
+        self.bins_per_semitone = bins_per_semitone
+
+    def __call__(self, batch_iterator):
+        """
+        :param batch_iterator: data iterator that yields the data to be
+                               augmented
+        :return: augmented data/target pairs
+        """
+        data, targets = batch_iterator
+        batch_size = len(data)
+
+        shifts = np.random.rand(batch_size) * 2 * self.max_shift - \
+            self.max_shift
+
+        # zero out shifts for 1-p percentage
+        no_shift = random.sample(range(batch_size),
+                                 int(batch_size * (1 - self.p)))
+        shifts[no_shift] = 0
+
+        new_data = np.empty_like(data)
+        for i in range(batch_size):
+            new_data[i] = shift(
+                data[i], (shifts[i] * self.bins_per_semitone, 0))
+
+        #yield new_data, targets
+        return new_data, targets

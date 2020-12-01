@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from torch.utils.data import DataLoader, ConcatDataset, SequentialSampler
 
-from .augmentations import SemitoneShift, one_hot, shift_majmin_targets
+from .augmentations import SemitoneShift, DetuningShift, one_hot, shift_majmin_targets
 from .dataset import ChromaDataset, BatchIterator, context_window, flatten_iterator
 from .dataset import prepare_datasource, split_datasource
 from .utils import get_chord_labels, convert_chord_ann_matrix, convert_annotation_matrix,\
@@ -166,17 +166,18 @@ def main():
     #     '/Users/discort/ml-course/chord-recognition/data/beatles/mp3/Help_/01-Help_.mp3',
     #     -3
     # )
-    datasource = prepare_datasource(('queen', 'beatles', 'robbie_williams', 'zweieck'))
+    datasource = prepare_datasource(('queen', ))
     train_size = int(0.8 * len(datasource))
     test_size = len(datasource) - train_size
     train_ds, test_ds = split_datasource(datasource, [train_size, test_size])
-    pitch_shift_data(test_ds)
+    # pitch_shift_data(test_ds)
     # print('training length=',len(train_ds), 'testing length=', len(test_ds))
 
     # shift = SemitoneShift(p=1.0, max_shift=4, bins_per_semitone=2)
     # import pudb; pudb.set_trace()
-    # train_dataset = ChromaDataset(train_ds, window_size=8192, hop_length=4096, transform=shift)
-    # train_dataset[43]
+    detuning = DetuningShift(p=1.0, max_shift=0.4, bins_per_semitone=2)
+    train_dataset = ChromaDataset(train_ds, window_size=8192, hop_length=4096, transform=detuning)
+    train_dataset[43]
     # dataset = flatten_iterator(shift(batch_iter))
     # loader_train = DataLoader(dataset, shuffle=True, num_workers=0, batch_size=32)
 
