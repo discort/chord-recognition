@@ -1,5 +1,4 @@
 import itertools
-import tempfile
 import warnings
 
 import librosa

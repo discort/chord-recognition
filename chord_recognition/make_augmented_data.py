@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, ConcatDataset, SequentialSampler
 
 from .augmentations import SemitoneShift, DetuningShift, one_hot, shift_majmin_targets
 from .dataset import ChromaDataset, BatchIterator, context_window, flatten_iterator
-from .dataset import prepare_datasource, split_datasource
+from .dataset import prepare_datasource, split_datasource, collect_files
 from .utils import get_chord_labels, convert_chord_ann_matrix, convert_annotation_matrix,\
     convert_label_sequence, read_structure_annotation, convert_chord_label
 
@@ -60,22 +60,24 @@ def make_frame_df(data_source):
     return df
 
 
-def print_audio_sample_rate():
+def print_audio_sample_rate(datasource=None):
     """
     Print an audio name and it's sampling_rate.
     Make sure that beatles audios have 16000 Hz but all others have 44100Hz.
     """
     from chord_recognition.dataset import prepare_datasource
     from chord_recognition.utils import read_audio
-    datasource = prepare_datasource(('queen', 'beatles', 'robie_williams', 'zweieck'))
-    for _, audio_path in datasource:
+    if datasource is None:
+        datasource = [audio_path for _, audio_path in prepare_datasource(
+            ('queen', 'beatles', 'robie_williams', 'zweieck'))]
+    for audio_path in datasource:
         audio_name = audio_path.replace('/Users/discort/ml-course/chord-recognition/data/', '')
         _, sampling_rate = read_audio(audio_path, Fs=None, mono=True)
         print(f"Fs for {audio_name}: {sampling_rate}")
         if 'beatles' in audio_name:
-            assert sampling_rate == 16000
+           assert sampling_rate == 16000
         else:
-            assert sampling_rate == 44100
+           assert sampling_rate == 44100
 
 
 def pitch_shift(annotation_path, audio_path, shift, output_dir='data/augmented'):
@@ -147,10 +149,17 @@ def pitch_shift_audio(audio_path, shift, output_filename):
         "asetrate=<sample_rate>*2^(<pitch>/12),atempo=1/2^(<pitch>/12)" "output.mp3"
     """
     import subprocess
-    sampling_rate = 16000 if 'beatles' in audio_path else 44100
+    #sampling_rate = 16000 if 'beatles' in audio_path else 44100
+    sampling_rate = 48000
+    # subprocess.call(
+    #     ['ffmpeg', '-i', audio_path, '-filter_complex',
+    #      f'asetrate={sampling_rate}*2^({shift}/12),atempo=1/2^({shift}/12)', output_filename]
+    # )
+    # Sox accepts accepts cents. 100ths of a semitone.
+    # There are 12 semitones to an octave, so that would mean ±1200 as a parameter.
+    shift = shift * 100
     subprocess.call(
-        ['ffmpeg', '-i', audio_path, '-filter_complex',
-         f'asetrate={sampling_rate}*2^({shift}/12),atempo=1/2^({shift}/12)', output_filename]
+        ['sox', audio_path, output_filename, 'pitch', str(shift)]
     )
 
 
@@ -161,23 +170,17 @@ def pitch_shift_data(datasource, max_shift=4):
 
 
 def main():
-    # pitch_shift(
-    #     '/Users/discort/ml-course/chord-recognition/data/beatles/chordlabs/Help_/01-Help_.lab',
-    #     '/Users/discort/ml-course/chord-recognition/data/beatles/mp3/Help_/01-Help_.mp3',
-    #     -3
-    # )
-    datasource = prepare_datasource(('queen', ))
-    train_size = int(0.8 * len(datasource))
-    test_size = len(datasource) - train_size
-    train_ds, test_ds = split_datasource(datasource, [train_size, test_size])
-    # pitch_shift_data(test_ds)
+    datasource = prepare_datasource(('beatles', ))
+    # train_size = int(0.8 * len(datasource))
+    # test_size = len(datasource) - train_size
+    # train_ds, test_ds = split_datasource(datasource, [train_size, test_size])
     # print('training length=',len(train_ds), 'testing length=', len(test_ds))
-
-    # shift = SemitoneShift(p=1.0, max_shift=4, bins_per_semitone=2)
-    # import pudb; pudb.set_trace()
-    detuning = DetuningShift(p=1.0, max_shift=0.4, bins_per_semitone=2)
-    train_dataset = ChromaDataset(train_ds, window_size=8192, hop_length=4096, transform=detuning)
-    train_dataset[43]
+    train_dataset = ChromaDataset(datasource, window_size=8192, hop_length=4096)
+    idx = np.array([1, 20, 30, 50])
+    train_dataset[idx]
+    #from .dataset import get_weighted_random_sampler
+    #get_weighted_random_sampler(train_dataset)
+    # train_dataset[43]
     # dataset = flatten_iterator(shift(batch_iter))
     # loader_train = DataLoader(dataset, shuffle=True, num_workers=0, batch_size=32)
 

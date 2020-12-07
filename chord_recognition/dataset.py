@@ -3,12 +3,19 @@ import os.path
 import random
 
 import numpy as np
-from torch.utils.data import Dataset, ConcatDataset
+from torch.utils.data import Dataset, ConcatDataset, WeightedRandomSampler
 
 from .utils import convert_chord_ann_matrix, get_chord_labels, read_structure_annotation,\
     convert_chord_label, convert_ann_to_seq_label, compute_chromagram, read_audio, log_compression
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+
+
+def get_weighted_random_sampler(dataset, class_counts):
+    weights = sum(class_counts) / (np.array(class_counts, dtype='float'))
+    sampling_weights = [weights[target] for _, target in dataset]
+    sampler = WeightedRandomSampler(sampling_weights, len(sampling_weights))
+    return sampler
 
 
 def flatten_iterator(data_source):
@@ -291,23 +298,11 @@ class ChromaDataset(MirDataset):
         return len(self._frames)
 
     def __getitem__(self, idx):
-        sample, target = self._frames[idx]
-        if self.transform:
-            sample, target = self.transform((sample, target[np.newaxis]))
-            target = target.squeeze()
-            return sample, target
-        return sample, target
-        # if isinstance(idx, int):
-        #     return self._frames[idx]
-        # elif isinstance(idx, list):
-        #     frame = self._frames[0]
-        #     batch_size = len(idx)
-        #     result_inputs = np.empty((batch_size, *frame[0].shape))
-        #     result_targets = np.empty((batch_size, *frame[1].shape), dtype=np.int64)
-        #     for i, batch_idx in enumerate(idx):
-        #         result_inputs[i, :] = self._frames[batch_idx][0]
-        #         result_targets[i, :] = self._frames[batch_idx][1]
-        #     return result_inputs, result_targets
+        if isinstance(idx, int):
+            return self._frames[idx]
+        elif isinstance(idx, np.ndarray):
+            frames = np.array(self._frames)[idx]
+            return [(f[0], f[1]) for f in frames]
 
     def _init_dataset(self):
         for ann_path, audio_path in self.datasource:
@@ -338,10 +333,15 @@ class ChromaDataset(MirDataset):
             ann_matrix = ann_matrix[:, ~zero_indices]
 
         result = []
+        # Context window cannot be applied because the length of frames is too short
+        if self.context_size:
+            if chromagram.shape[1] < (2 * self.context_size + 1):
+                return result
+
         container = context_window(chromagram, self.context_size)
         for frame, idx_target in zip(container, range(chromagram.shape[1])):
             label = ann_matrix[:, idx_target]
-            result.append((frame.reshape(1, *frame.shape), label))
+            result.append((frame.reshape(1, *frame.shape), np.argmax(label)))
         return result
 
 
