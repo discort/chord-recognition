@@ -12,7 +12,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
 
 def get_weighted_random_sampler(dataset, class_counts):
-    weights = sum(class_counts) / (np.array(class_counts, dtype='float'))
+    weights = 1. / (np.array(class_counts, dtype='float'))
     sampling_weights = [weights[target] for _, target in dataset]
     sampler = WeightedRandomSampler(sampling_weights, len(sampling_weights))
     return sampler
@@ -269,14 +269,15 @@ class AudioDataset(MirDataset):
 
 
 class ChromaDataset(MirDataset):
-    def __init__(self, datasource, window_size=4096,
-                 hop_length=2048, n_chroma=105, transform=None):
+    def __init__(self, datasource, window_size=4096, hop_length=2048,
+                 n_chroma=105, cache=None, transform=None):
         """
         Args:
             datasource: list of tuples - label:source file path notation
             audio_dir (string): Path to audio dir
             ann_dir (string): Path to the dir with csv annotations.
             n_chroma: int - number of chroma features
+            cache: cache.Cache obj - use cached data
             transform (callable, optional): Optional transform to be applied
                 on a sample.
         """
@@ -291,6 +292,7 @@ class ChromaDataset(MirDataset):
         self.num_classes = len(self.chord_labels)
         self._frames = []
         self.context_size = 7
+        self.cache = cache
         self.transform = transform
         self._init_dataset()
 
@@ -305,9 +307,20 @@ class ChromaDataset(MirDataset):
             return [(f[0], f[1]) for f in frames]
 
     def _init_dataset(self):
+        """
+        Initialise (sample, label) for all frames.
+        Use cache if available.
+        """
+        cache = self.cache
         for ann_path, audio_path in self.datasource:
-            audio_frames = self._init_audio(ann_path, audio_path)
-            self._frames.extend(audio_frames)
+            frame_data = []
+            if cache:
+                frame_data = cache.get(ann_path)
+            if not frame_data:
+                frame_data = self._init_audio(ann_path, audio_path)
+                if frame_data:
+                    cache.set(ann_path, frame_data)
+            self._frames.extend(frame_data)
 
     def _init_audio(self, ann_path, audio_path):
         #audio_path = os.path.join(self.audio_dir, filename + '.mp3')

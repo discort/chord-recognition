@@ -1,3 +1,4 @@
+h5py==3.1.0
 jupyter==1.0.0
 librosa==0.8.0
 livelossplot==0.5.3
