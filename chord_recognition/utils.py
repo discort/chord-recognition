@@ -118,6 +118,15 @@ def convert_structure_annotation(ann, Fs=1, remove_digits=False, index=False):
     return ann_converted
 
 
+def build_ann_df(fn_ann, sep=None):
+    df = read_csv(fn_ann, sep=sep)
+    if len(df.columns) < 3:
+        # Some annotations are separated by space but others by \t
+        df = read_csv(fn_ann, sep='\t')
+    df.columns = ['start', 'end', 'label']
+    return df
+
+
 def read_structure_annotation(fn_ann, Fs=1, remove_digits=False, index=False):
     """Read and convert structure annotation,
 
@@ -130,46 +139,47 @@ def read_structure_annotation(fn_ann, Fs=1, remove_digits=False, index=False):
         ann: Annotations
     """
 
-    df = read_csv(fn_ann)
-    if len(df.columns) < 3:
-        # Some annotations are separated by space but others by \t
-        df = read_csv(fn_ann, sep='\t')
+    df = build_ann_df(fn_ann)
+    df = convert_chord_label(df)
     ann = [(start, end, label) for i, (start, end, label) in df.iterrows()]
     ann = convert_structure_annotation(ann, Fs=Fs, remove_digits=remove_digits, index=index)
     return ann
 
 
-def convert_chord_label(ann):
+def convert_chord_label(df):
     """Replace for segment-based annotation in each chord label the string ':min' by 'm'
     and convert flat chords into sharp chords using enharmonic equivalence
 
-    Args:
-        ann: Segment-based annotation with chord labels
-
-    Returns:
-        ann: Segment-based annotation with chord labels
+    Check MIREX chord vocabularies for details:
+    https://www.music-ir.org/mirex/wiki/2020:Audio_Chord_Estimation#Chord_Vocabularies
     """
-    for k in range(len(ann)):
-        ann[k][2] = ann[k][2].replace(':min', 'm')
-        ann[k][2] = ann[k][2].replace('Db', 'C#')
-        ann[k][2] = ann[k][2].replace('Eb', 'D#')
-        ann[k][2] = ann[k][2].replace('Gb', 'F#')
-        ann[k][2] = ann[k][2].replace('Ab', 'G#')
-        ann[k][2] = ann[k][2].replace('Bb', 'A#')
+    df = df.copy()
+    df['label'] = df.label.str.replace('Cb', 'B', regex=False)
+    df['label'] = df.label.str.replace('Db', 'C#', regex=False)
+    df['label'] = df.label.str.replace('Eb', 'D#', regex=False)
+    df['label'] = df.label.str.replace('Fb', 'E', regex=False)
+    df['label'] = df.label.str.replace('Gb', 'F#', regex=False)
+    df['label'] = df.label.str.replace('Ab', 'G#', regex=False)
+    df['label'] = df.label.str.replace('Bb', 'A#', regex=False)
 
-        ann[k][2] = ann[k][2].replace('C:maj', 'C')
-        ann[k][2] = ann[k][2].replace('C#:maj', 'C#')
-        ann[k][2] = ann[k][2].replace('D:maj', 'D')
-        ann[k][2] = ann[k][2].replace('D#:maj', 'D#')
-        ann[k][2] = ann[k][2].replace('E:maj', 'E')
-        ann[k][2] = ann[k][2].replace('F:maj', 'F')
-        ann[k][2] = ann[k][2].replace('F#:maj', 'F#')
-        ann[k][2] = ann[k][2].replace('G:maj', 'G')
-        ann[k][2] = ann[k][2].replace('G#:maj', 'G#')
-        ann[k][2] = ann[k][2].replace('A:maj', 'A')
-        ann[k][2] = ann[k][2].replace('A#:maj', 'A#')
-        ann[k][2] = ann[k][2].replace('B:maj', 'B')
-    return ann
+    df['label'] = df.label.str.replace('C:maj', 'C', regex=False)
+    df['label'] = df.label.str.replace('C#:maj', 'C#', regex=False)
+    df['label'] = df.label.str.replace('D:maj', 'D', regex=False)
+    df['label'] = df.label.str.replace('D#:maj', 'D#', regex=False)
+    df['label'] = df.label.str.replace('E:maj', 'E', regex=False)
+    df['label'] = df.label.str.replace('F:maj', 'F', regex=False)
+    df['label'] = df.label.str.replace('F#:maj', 'F#', regex=False)
+    df['label'] = df.label.str.replace('G:maj', 'G', regex=False)
+    df['label'] = df.label.str.replace('G#:maj', 'G#', regex=False)
+    df['label'] = df.label.str.replace('A:maj', 'A', regex=False)
+    df['label'] = df.label.str.replace('A#:maj', 'A#', regex=False)
+    df['label'] = df.label.str.replace('B:maj', 'B', regex=False)
+
+    df['label'] = df.label.str.replace(':maj7', 'maj7', regex=False)
+    df['label'] = df.label.str.replace(':min7', 'min7', regex=False)
+    df['label'] = df.label.str.replace(':min', 'm', regex=True)
+    df['label'] = df.label.str.replace(':7', '7', regex=True)
+    return df
 
 
 def convert_sequence_ann(seq, Fs=1):
@@ -206,9 +216,7 @@ def convert_chord_ann_matrix(fn_ann, chord_labels, Fs=1, N=None, last=False):
         ann_seg_ind: Segment-based annotation with segments (given in indices)
     """
     ann_seg_sec = read_structure_annotation(fn_ann)
-    ann_seg_sec = convert_chord_label(ann_seg_sec)
     ann_seg_ind = read_structure_annotation(fn_ann, Fs=Fs, index=True)
-    ann_seg_ind = convert_chord_label(ann_seg_ind)
 
     ann_frame = convert_ann_to_seq_label(ann_seg_ind)
     if N is None:
@@ -216,7 +224,7 @@ def convert_chord_ann_matrix(fn_ann, chord_labels, Fs=1, N=None, last=False):
     if N < len(ann_frame):
         ann_frame = ann_frame[:N]
     if N > len(ann_frame):
-        if last == True:
+        if last is True:
             pad_symbol = ann_frame[-1]
         else:
             pad_symbol = 'N'
