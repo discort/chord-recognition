@@ -199,7 +199,7 @@ class ChromaDataset:
             audio_waveform, sample_rate=sampling_rate,
             num_channels=1, frame_size=self.window_size, hop_size=self.hop_length,
             fmin=65, fmax=2100, num_bands=24).T
-        x = np.copy(spectrogram)
+        spectrogram = np.copy(spectrogram)  # convert to ndarray
         #chromagram = log_compression(chromagram)
         N_X = spectrogram.shape[1]
         Fs_X = sampling_rate / self.hop_length
