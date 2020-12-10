@@ -2,12 +2,13 @@ import os
 import os.path
 import random
 
-import madmom as mm
+import librosa
 import numpy as np
 from torch.utils.data import Dataset, ConcatDataset, WeightedRandomSampler
 
 from .utils import convert_chord_ann_matrix, get_chord_labels, read_structure_annotation,\
-    convert_chord_label, convert_ann_to_seq_label, compute_chromagram, read_audio, log_compression
+    convert_chord_label, convert_ann_to_seq_label, compute_chromagram, read_audio,\
+    log_filtered_spectrogram
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
@@ -195,12 +196,14 @@ class ChromaDataset:
         #                                  n_chroma=self.n_chroma,
         #                                  window_size=self.window_size,
         #                                  hop_length=self.hop_length)
-        spectrogram = mm.audio.LogarithmicFilteredSpectrogram(
-            audio_waveform, sample_rate=sampling_rate,
-            num_channels=1, frame_size=self.window_size, hop_size=self.hop_length,
-            fmin=65, fmax=2100, num_bands=24).T
-        spectrogram = np.copy(spectrogram)  # convert to ndarray
-        #chromagram = log_compression(chromagram)
+        spectrogram = log_filtered_spectrogram(
+            audio_waveform=audio_waveform,
+            sr=sampling_rate,
+            window_size=self.window_size,
+            hop_length=self.hop_length,
+            fmin=65, fmax=2100, num_bands=24)
+        # Compute normalization factor for each frame
+        spectrogram = librosa.util.normalize(spectrogram, norm=np.inf, axis=0)
         N_X = spectrogram.shape[1]
         Fs_X = sampling_rate / self.hop_length
 

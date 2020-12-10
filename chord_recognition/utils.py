@@ -2,6 +2,7 @@ import itertools
 import warnings
 
 import librosa
+import madmom as mm
 import numpy as np
 import pandas as pd
 
@@ -268,6 +269,19 @@ def compute_chromagram(audio_waveform, Fs, window_size=8192, hop_length=4096,
                                              n_fft=window_size, hop_length=hop_length,
                                              tuning=tuning, n_chroma=n_chroma)
     return chromagram
+
+
+def log_filtered_spectrogram(audio_waveform, sr, window_size,
+                             hop_length, fmin, fmax, num_bands):
+    """
+    Logarithmic Filtered Spectrogram
+    """
+    spectrogram = mm.audio.LogarithmicFilteredSpectrogram(
+        audio_waveform, sample_rate=sr,
+        num_channels=1, frame_size=window_size, hop_size=hop_length,
+        fmin=fmin, fmax=fmax, num_bands=num_bands).T
+    spectrogram = np.copy(spectrogram)
+    return spectrogram
 
 
 def read_audio(path, Fs=None, mono=False, duration=None):
