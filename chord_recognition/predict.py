@@ -7,7 +7,8 @@ from torch.utils.data import BatchSampler, SequentialSampler
 import torch.nn.functional as F
 
 from chord_recognition.dataset import ContextIterator, context_window
-from chord_recognition.utils import compute_chromagram, compute_annotation, log_compression, \
+from chord_recognition.ann_utils import compute_annotation
+from chord_recognition.utils import compute_chromagram, log_compression, \
     exponential_smoothing
 from .cnn import model
 

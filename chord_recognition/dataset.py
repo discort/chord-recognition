@@ -4,11 +4,10 @@ import random
 
 import librosa
 import numpy as np
-from torch.utils.data import Dataset, ConcatDataset, WeightedRandomSampler
+from torch.utils.data import Dataset, WeightedRandomSampler
 
-from .utils import convert_chord_ann_matrix, get_chord_labels, read_structure_annotation,\
-    convert_chord_label, convert_ann_to_seq_label, compute_chromagram, read_audio,\
-    log_filtered_spectrogram
+from .ann_utils import convert_chord_ann_matrix, get_chord_labels
+from .utils import compute_chromagram, read_audio, scale_data, log_filtered_spectrogram
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
@@ -142,7 +141,7 @@ def context_window(x, context_size):
 
 class ChromaDataset:
     def __init__(self, datasource, window_size=4096, hop_length=2048,
-                 cache=None, transform=None):
+                 context_size=7, cache=None, transform=None):
         """
         Args:
             datasource: list of tuples - label:source file path notation
@@ -158,7 +157,7 @@ class ChromaDataset:
         self.chord_labels = get_chord_labels(ext_minor='m', nonchord=True)
         self.num_classes = len(self.chord_labels)
         self._frames = []
-        self.context_size = 7
+        self.context_size = context_size
         self.cache = cache
         self.transform = transform
         self._init_dataset()
@@ -180,53 +179,67 @@ class ChromaDataset:
         """
         cache = self.cache
         for ann_path, audio_path in self.datasource:
-            frame_data = []
-            if cache:
-                frame_data = cache.get(ann_path)
-            if not frame_data:
-                frame_data = self._init_audio(ann_path, audio_path)
-                if frame_data:
-                    cache.set(ann_path, frame_data)
+            sample = self._make_sample(ann_path, audio_path)
+            sample = self._transform_sample(sample)
+            frame_data = self._make_frames(sample)
             self._frames.extend(frame_data)
 
-    def _init_audio(self, ann_path, audio_path):
-        audio_waveform, sampling_rate = read_audio(audio_path, Fs=None, mono=True)
-        # spectrogram = compute_chromagram(audio_waveform=audio_waveform,
-        #                                  Fs=sampling_rate,
-        #                                  n_chroma=self.n_chroma,
-        #                                  window_size=self.window_size,
-        #                                  hop_length=self.hop_length)
-        spectrogram = log_filtered_spectrogram(
-            audio_waveform=audio_waveform,
-            sr=sampling_rate,
-            window_size=self.window_size,
-            hop_length=self.hop_length,
-            fmin=65, fmax=2100, num_bands=24)
-        # Compute normalization factor for each frame
-        spectrogram = librosa.util.normalize(spectrogram, norm=np.inf, axis=0)
-        N_X = spectrogram.shape[1]
-        Fs_X = sampling_rate / self.hop_length
-
-        ann_matrix, _, _, _, _ = convert_chord_ann_matrix(
-            fn_ann=ann_path, chord_labels=self.chord_labels, Fs=Fs_X, N=N_X, last=False)
-
-        # Exclude unlabeled data and noise from spectrogram
-        # zero_indices = np.all(ann_matrix == 0, axis=0)
-        # if zero_indices.any():
-        #     spectrogram = spectrogram[:, ~zero_indices]
-        #     ann_matrix = ann_matrix[:, ~zero_indices]
-
+    def _make_frames(self, sample):
+        spec, ann_matrix = sample
         result = []
+
         # Context window cannot be applied because the length of frames is too short
         # if self.context_size:
-        #     if spectrogram.shape[1] < (2 * self.context_size + 1):
+        #     if spec.shape[1] < (2 * self.context_size + 1):
         #         return result
 
-        container = context_window(spectrogram, self.context_size)
-        for frame, idx_target in zip(container, range(spectrogram.shape[1])):
+        container = context_window(spec, self.context_size)
+        for frame, idx_target in zip(container, range(spec.shape[1])):
             label = ann_matrix[:, idx_target]
             # Exclude only unlabeled data
             if not label.any():
                 continue
             result.append((frame.reshape(1, *frame.shape), np.argmax(label)))
         return result
+
+    def _transform_sample(self, sample):
+        spec, ann_matrix = sample
+        spec = scale_data(x=spec, method="std", axis=1)
+        return spec, ann_matrix
+
+    def _cached(func):
+        def wrapped(self, *args):
+            value = None
+            key = args[0]
+            cache = self.cache
+
+            if cache:
+                value = cache.get(key)
+            if not value:
+                value = func(self, *args)
+                if cache:
+                    cache.set(key, value)
+            return value
+        return wrapped
+
+    @_cached
+    def _make_sample(self, ann_path, audio_path):
+        audio_waveform, sampling_rate = read_audio(audio_path, Fs=None, mono=True)
+        # spectrogram = compute_chromagram(audio_waveform=audio_waveform,
+        #                                  Fs=sampling_rate,
+        #                                  n_chroma=self.n_chroma,
+        #                                  window_size=self.window_size,
+        #                                  hop_length=self.hop_length)
+        spec = log_filtered_spectrogram(
+            audio_waveform=audio_waveform,
+            sr=sampling_rate,
+            window_size=self.window_size,
+            hop_length=self.hop_length,
+            fmin=65, fmax=2100, num_bands=24)
+
+        Fs_X = sampling_rate / self.hop_length
+        ann_matrix, _, _, _, _ = convert_chord_ann_matrix(
+            fn_ann=ann_path, chord_labels=self.chord_labels,
+            Fs=Fs_X, N=spec.shape[1], last=False)
+
+        return spec, ann_matrix
