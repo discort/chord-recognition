@@ -7,7 +7,8 @@ import numpy as np
 from torch.utils.data import Dataset, WeightedRandomSampler
 
 from .ann_utils import convert_chord_ann_matrix, get_chord_labels
-from .utils import compute_chromagram, read_audio, scale_data, log_filtered_spectrogram
+from .utils import compute_chromagram, read_audio, scale_data, log_filtered_spectrogram,\
+    preprocess_spectrogram
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
@@ -180,8 +181,11 @@ class ChromaDataset:
         cache = self.cache
         for ann_path, audio_path in self.datasource:
             sample = self._make_sample(ann_path, audio_path)
-            sample = self._transform_sample(sample)
-            frame_data = self._make_frames(sample)
+            sample = self._preprocess_sample(sample)
+            if not self.context_size:
+                frame_data = [sample]
+            else:
+                frame_data = self._make_frames(sample)
             self._frames.extend(frame_data)
 
     def _make_frames(self, sample):
@@ -202,9 +206,10 @@ class ChromaDataset:
             result.append((frame.reshape(1, *frame.shape), np.argmax(label)))
         return result
 
-    def _transform_sample(self, sample):
+    def _preprocess_sample(self, sample):
         spec, ann_matrix = sample
-        spec = scale_data(x=spec, method="std", axis=1)
+        #spec = scale_data(x=spec, method="std", axis=1)
+        spec = preprocess_spectrogram(spec)
         return spec, ann_matrix
 
     def _cached(func):
