@@ -142,6 +142,15 @@ def log_filtered_spectrogram(audio_waveform, sr, window_size,
     return spectrogram
 
 
+class Rescale:
+    """
+    Subtracts the frame mean and divides by the standard deviation.
+    """
+
+    def __call__(self, frame):
+        return preprocess_spectrogram(frame)
+
+
 def preprocess_spectrogram(spec):
     """
     Subtracts the features mean and divides by the standard deviation.

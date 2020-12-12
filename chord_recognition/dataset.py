@@ -13,10 +13,14 @@ from .utils import compute_chromagram, read_audio, scale_data, log_filtered_spec
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
 
-def get_weighted_random_sampler(dataset, class_counts):
+def get_weighted_random_sampler(targets, train_targets):
+    _, class_counts = np.unique(targets, return_counts=True)
+
     weights = 1. / (np.array(class_counts, dtype='float'))
-    sampling_weights = [weights[target] for _, target in dataset]
-    sampler = WeightedRandomSampler(sampling_weights, len(sampling_weights))
+    sampling_weights = [weights[target] for target in train_targets]
+    sampler = WeightedRandomSampler(
+        weights=sampling_weights,
+        num_samples=len(sampling_weights))
     return sampler
 
 
@@ -34,7 +38,7 @@ def split_datasource(datasource, lengths):
             for offset, length in zip(_accumulate(lengths), lengths)]
 
 
-def prepare_datasource(datasets):
+def prepare_datasource(datasets, data_dir=None):
     """
     Prepares data for Pytorch Dataset.
     Walks through each dir dataset and collects labeled and source files.
@@ -46,7 +50,8 @@ def prepare_datasource(datasets):
         result: list of tuples in [(path_to_label:path_to_source)] notation
     """
     datasource = []
-    data_dir = os.path.join(BASE_DIR, 'data')
+    if data_dir is None:
+        data_dir = os.path.join(BASE_DIR, 'data')
     for ds_name in datasets:
         data_source_dir = os.path.join(data_dir, ds_name)
         lab_files = collect_files(dir_path=os.path.join(data_source_dir, 'chordlabs'), ext='.lab')
@@ -146,8 +151,6 @@ class ChromaDataset:
         """
         Args:
             datasource: list of tuples - label:source file path notation
-            audio_dir (string): Path to audio dir
-            ann_dir (string): Path to the dir with csv annotations.
             cache: cache.Cache obj - use cached data
             transform (callable, optional): Optional transform to be applied
                 on a sample.
@@ -178,10 +181,8 @@ class ChromaDataset:
         Initialise (sample, label) for all frames.
         Use cache if available.
         """
-        cache = self.cache
         for ann_path, audio_path in self.datasource:
             sample = self._make_sample(ann_path, audio_path)
-            sample = self._preprocess_sample(sample)
             if not self.context_size:
                 frame_data = [sample]
             else:
@@ -203,13 +204,14 @@ class ChromaDataset:
             # Exclude only unlabeled data
             if not label.any():
                 continue
+
+            if self.transform:
+                frame = self.transform(frame)
             result.append((frame.reshape(1, *frame.shape), np.argmax(label)))
         return result
 
     def _preprocess_sample(self, sample):
         spec, ann_matrix = sample
-        #spec = scale_data(x=spec, method="std", axis=1)
-        spec = preprocess_spectrogram(spec)
         return spec, ann_matrix
 
     def _cached(func):
