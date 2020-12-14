@@ -19,13 +19,18 @@ class BasicConv2d(nn.Module):
         **kwargs: Any
     ) -> None:
         super(BasicConv2d, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, bias=True, **kwargs)
+        self.conv = nn.Conv2d(in_channels, out_channels, bias=False, **kwargs)
         self.bn = nn.BatchNorm2d(out_channels, eps=0.001)
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.conv(x)
+        # 1. Originally, activation should be applied after batchnorm
+        # however, it's arguable what to use first: batchnorm or activation
+        # https://github.com/keras-team/keras/issues/1802#issuecomment-187966878
+        # 2. This function converges better if relu is used before batchnorm
+        x = F.relu(x)
         x = self.bn(x)
-        return F.relu(x, inplace=True)
+        return x
 
 
 class DeepAuditory(nn.Module):
