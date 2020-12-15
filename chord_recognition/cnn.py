@@ -109,15 +109,13 @@ class FactChroma(nn.Module):
     def __init__(self, in_channels: int, channels_12x9: int) -> None:
         super(FactChroma, self).__init__()
         c12x9 = channels_12x9
-        self.branch12x9_1 = BasicConv2d(in_channels, c12x9, kernel_size=1)
-        self.branch12x9_2 = BasicConv2d(c12x9, c12x9, kernel_size=(1, 9), padding=0)
-        self.branch12x9_3 = BasicConv2d(c12x9, 128, kernel_size=(12, 1), padding=0)
+        self.branch12x9_1 = BasicConv2d(in_channels, c12x9, kernel_size=(12, 1), padding=0)
+        self.branch12x9_2 = BasicConv2d(c12x9, 128, kernel_size=(1, 9), padding=0)
 
     def forward(self, x: Tensor) -> Tensor:
-        branch12x9 = self.branch12x9_1(x)
-        branch12x9 = self.branch12x9_2(branch12x9)
-        branch12x9 = self.branch12x9_3(branch12x9)
-        return branch12x9
+        x = self.branch12x9_1(x)
+        x = self.branch12x9_2(x)
+        return x
 
 
 class FactorizationAuditory(nn.Module):
@@ -133,7 +131,7 @@ class FactorizationAuditory(nn.Module):
         self.Conv2d_3a_3x3 = BasicConv2d(32, 64, kernel_size=3)
         self.Conv2d_4a_3x3 = BasicConv2d(64, 64, kernel_size=3)
         #self.Conv2d_5a_12x9 = BasicConv2d(64, 128, kernel_size=(12, 9))
-        self.Conv2d_5a_12x9 = FactChroma(64, channels_12x9=128)
+        self.Conv2d_5a_12x9 = FactChroma(64, channels_12x9=64)
         self.Conv2d_6a_1x1 = BasicConv2d(128, 25, kernel_size=1)
         self.avg_pool = nn.AvgPool2d(kernel_size=(13, 3))
         self.dropout = nn.Dropout(p=0.5)
