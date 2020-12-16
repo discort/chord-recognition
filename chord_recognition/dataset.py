@@ -66,13 +66,14 @@ def prepare_datasource(datasets, data_dir=None):
 
 def collect_files(dir_path, ext='.lab', excluded_files=()):
     files = []
-    for root, dirs, filenames in os.walk(dir_path):
-        for filename in filenames:
+    for dirname in sorted(os.listdir(dir_path)):
+        for filename in sorted(os.listdir(os.path.join(dir_path, dirname))):
             if any(f in filename for f in excluded_files):
                 continue
             if not filename.endswith(ext):
                 continue
-            file_path = os.path.join(root, filename)
+
+            file_path = os.path.join(dir_path, dirname, filename)
             files.append(file_path)
     return files
 
