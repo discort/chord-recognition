@@ -22,8 +22,8 @@ def deep_auditory(pretrained: bool = False, **kwargs: Any):
     return DeepAuditory(**kwargs)
 
 
-def fact_auditory(**kwargs: Any):
-    return FactorizationAuditory(**kwargs)
+def deep_auditory_v2(**kwargs: Any):
+    return DeepAuditoryV2(**kwargs)
 
 
 class BasicConv2d(nn.Module):
@@ -64,7 +64,7 @@ class DeepAuditory(nn.Module):
         self.Conv2d_3a_3x3 = BasicConv2d(32, 64, kernel_size=3)
         self.Conv2d_4a_3x3 = BasicConv2d(64, 64, kernel_size=3)
         self.Conv2d_5a_12x9 = BasicConv2d(64, 128, kernel_size=(12, 9))
-        self.Conv2d_6a_1x1 = BasicConv2d(128, 25, kernel_size=1)
+        self.Conv2d_6a_1x1_linear = nn.Conv2d(128, 25, kernel_size=1)
         self.avg_pool = nn.AvgPool2d(kernel_size=(13, 3))
         self.dropout = nn.Dropout(p=0.5)
 
@@ -94,7 +94,7 @@ class DeepAuditory(nn.Module):
         # N x 128 × 13 × 3
         x = self.dropout(x)
         # N x 128 × 13 × 3
-        x = self.Conv2d_6a_1x1(x)
+        x = self.Conv2d_6a_1x1_linear(x)
         # N x 25 × 13 × 3
         x = self.avg_pool(x)
         # N x 25 × 1 × 1
@@ -118,12 +118,12 @@ class FactChroma(nn.Module):
         return x
 
 
-class FactorizationAuditory(nn.Module):
+class DeepAuditoryV2(nn.Module):
     """Deep Auditory Model reduced by factorization
     """
 
     def __init__(self, num_classes: int = 25) -> None:
-        super(FactorizationAuditory, self).__init__()
+        super(DeepAuditoryV2, self).__init__()
 
         self.Conv2d_1a_3x3 = BasicConv2d(1, 32, kernel_size=3, padding=1)
         self.Conv2d_2a_3x3 = BasicConv2d(32, 32, kernel_size=3, padding=1)
@@ -131,8 +131,8 @@ class FactorizationAuditory(nn.Module):
         self.Conv2d_3a_3x3 = BasicConv2d(32, 64, kernel_size=3)
         self.Conv2d_4a_3x3 = BasicConv2d(64, 64, kernel_size=3)
         #self.Conv2d_5a_12x9 = BasicConv2d(64, 128, kernel_size=(12, 9))
-        self.Conv2d_5a_12x9 = FactChroma(64, channels_12x9=64)
-        self.Conv2d_6a_1x1 = BasicConv2d(128, 25, kernel_size=1)
+        self.Conv2d_5a_12x9 = FactChroma(64, channels_12x9=128)
+        self.Conv2d_6a_1x1_linear = nn.Conv2d(128, 25, kernel_size=1)
         self.avg_pool = nn.AvgPool2d(kernel_size=(13, 3))
         self.dropout = nn.Dropout(p=0.5)
 
@@ -158,7 +158,7 @@ class FactorizationAuditory(nn.Module):
         # N x 128 × 13 × 3
         x = self.dropout(x)
         # N x 128 × 13 × 3
-        x = self.Conv2d_6a_1x1(x)
+        x = self.Conv2d_6a_1x1_linear(x)
         # N x 25 × 13 × 3
         x = self.avg_pool(x)
         # N x 25 × 1 × 1

@@ -59,8 +59,10 @@ def prepare_datasource(datasets, data_dir=None):
         if len(lab_files) != len(audio_files):
             raise ValueError(f"{ds_name} has different len of lab and mp3 files")
 
-        lab_audio = [(lab, audio) for lab, audio in zip(lab_files, audio_files)]
-        datasource.extend(lab_audio)
+        for lab, audio in zip(lab_files, audio_files):
+            assert lab.split('/')[-1].replace('.lab', '') ==\
+                audio.split('/')[-1].replace('.mp3', '')
+            datasource.append((lab, audio))
     return datasource
 
 
@@ -218,7 +220,7 @@ class ChromaDataset:
     def _cached(func):
         def wrapped(self, *args):
             value = None
-            key = args[0]
+            key = self._prepare_key(args[0])
             cache = self.cache
 
             if cache:
@@ -230,14 +232,19 @@ class ChromaDataset:
             return value
         return wrapped
 
+    @staticmethod
+    def _prepare_key(key):
+        # Make key in <album_annotation> format
+        return '_'.join(key.split('/')[-2:]).replace('.lab', '')
+
     @_cached
     def _make_sample(self, ann_path, audio_path):
         audio_waveform, sampling_rate = read_audio(audio_path, Fs=None, mono=True)
-        # spectrogram = compute_chromagram(audio_waveform=audio_waveform,
-        #                                  Fs=sampling_rate,
-        #                                  n_chroma=self.n_chroma,
-        #                                  window_size=self.window_size,
-        #                                  hop_length=self.hop_length)
+        # spec = compute_chromagram(audio_waveform=audio_waveform,
+        #                           Fs=sampling_rate,
+        #                           n_chroma=105,
+        #                           window_size=self.window_size,
+        #                           hop_length=self.hop_length)
         spec = log_filtered_spectrogram(
             audio_waveform=audio_waveform,
             sr=sampling_rate,
