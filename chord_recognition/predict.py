@@ -1,23 +1,18 @@
-import os.path
-
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import BatchSampler, SequentialSampler
 import torch.nn.functional as F
 
-from chord_recognition.dataset import ContextIterator, context_window
+from chord_recognition.dataset import context_window
 from chord_recognition.ann_utils import compute_annotation
-from chord_recognition.utils import compute_chromagram, log_compression, \
-    exponential_smoothing
-from .cnn import model
+from chord_recognition.utils import exponential_smoothing,\
+    log_filtered_spectrogram, preprocess_spectrogram
+from .cnn import deep_auditory_v2
 
-CURR_DIR = os.path.dirname(__file__)
 
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-model.load_state_dict(
-    torch.load(os.path.join(CURR_DIR, 'models/etd_best_model.pt'), map_location=device))
-model.eval()
+model = deep_auditory_v2(pretrained=True)
+model.eval()  # set model to evaluation mode
 
 
 @torch.no_grad()
@@ -26,6 +21,7 @@ def predict_annotations(spectrogram, model, device, batch_size=32, context_size=
     # ToDo:
     # - vectorize funtions (get frame matrix)
     frames = context_window(spectrogram, context_size)
+    frames = [preprocess_spectrogram(f) for f in frames]
     frames = np.asarray([f.reshape(1, *f.shape) for f in frames])
 
     sampler = BatchSampler(SequentialSampler(frames), batch_size=batch_size, drop_last=False)
@@ -35,7 +31,7 @@ def predict_annotations(spectrogram, model, device, batch_size=32, context_size=
         scores = model(inputs)
         scores = criterion(scores)
         scores = scores.squeeze(3).squeeze(2)
-        scores = batch_exponential_smoothing(scores, 0.1)
+        #scores = batch_exponential_smoothing(scores, 0.1)
         result[idx, :] = scores
 
     preds = torch.argmax(result, 1)
@@ -72,13 +68,20 @@ def annotate_audio(audio_waveform, Fs, window_size=8192, hop_length=4096,
     Returns:
         annotation: annotated file in format [(start, end, label), ...]
     """
-    chromagram = compute_chromagram(
+    # chromagram = compute_chromagram(
+    #     audio_waveform=audio_waveform,
+    #     Fs=Fs,
+    #     window_size=window_size,
+    #     hop_length=hop_length)
+    spec = log_filtered_spectrogram(
         audio_waveform=audio_waveform,
-        Fs=Fs,
+        sr=Fs,
         window_size=window_size,
-        hop_length=hop_length)
-    chromagram = log_compression(chromagram)
-    ann_matrix = predict_annotations(chromagram, model, device, batch_size=8)
+        hop_length=hop_length,
+        fmin=65, fmax=2100, num_bands=24
+    )
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    ann_matrix = predict_annotations(spec, model, device, batch_size=8)
     annotations = compute_annotation(
         ann_matrix, hop_length, Fs, ext_minor=ext_minor, nonchord=nonchord)
     return annotations

@@ -13,17 +13,6 @@ from .utils import compute_chromagram, read_audio, scale_data, log_filtered_spec
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
 
-def get_weighted_random_sampler(targets, train_targets):
-    _, class_counts = np.unique(targets, return_counts=True)
-
-    weights = 1. / (np.array(class_counts, dtype='float'))
-    sampling_weights = [weights[target] for target in train_targets]
-    sampler = WeightedRandomSampler(
-        weights=sampling_weights,
-        num_samples=len(sampling_weights))
-    return sampler
-
-
 def split_datasource(datasource, lengths):
     """
     Split a datasource into non-overlapping new datasources of given lengths
@@ -38,7 +27,11 @@ def split_datasource(datasource, lengths):
             for offset, length in zip(_accumulate(lengths), lengths)]
 
 
-def prepare_datasource(datasets, data_dir=None):
+def prepare_datasource(
+        datasets,
+        data_dir=None,
+        excluded_files=(),
+        allowed_files=()):
     """
     Prepares data for Pytorch Dataset.
     Walks through each dir dataset and collects labeled and source files.
@@ -54,22 +47,33 @@ def prepare_datasource(datasets, data_dir=None):
         data_dir = os.path.join(BASE_DIR, 'data')
     for ds_name in datasets:
         data_source_dir = os.path.join(data_dir, ds_name)
-        lab_files = collect_files(dir_path=os.path.join(data_source_dir, 'chordlabs'), ext='.lab')
-        audio_files = collect_files(dir_path=os.path.join(data_source_dir, 'mp3'), ext='.mp3')
+        lab_files = collect_files(
+            dir_path=os.path.join(data_source_dir, 'chordlabs'),
+            ext='.lab',
+            excluded_files=excluded_files,
+            allowed_files=allowed_files)
+        audio_files = collect_files(
+            dir_path=os.path.join(data_source_dir, 'mp3'),
+            ext='.mp3',
+            excluded_files=excluded_files,
+            allowed_files=allowed_files)
         if len(lab_files) != len(audio_files):
             raise ValueError(f"{ds_name} has different len of lab and mp3 files")
 
         for lab, audio in zip(lab_files, audio_files):
-            assert lab.split('/')[-1].replace('.lab', '') ==\
-                audio.split('/')[-1].replace('.mp3', '')
+            assert lab.split('/')[-1].replace('.lab', '').lower() ==\
+                audio.split('/')[-1].replace('.mp3', '').lower()
             datasource.append((lab, audio))
     return datasource
 
 
-def collect_files(dir_path, ext='.lab', excluded_files=()):
+def collect_files(dir_path, ext='.lab', excluded_files=(), allowed_files=()):
     files = []
     for dirname in sorted(os.listdir(dir_path)):
         for filename in sorted(os.listdir(os.path.join(dir_path, dirname))):
+            if allowed_files and not any(f in filename for f in allowed_files):
+                continue
+
             if any(f in filename for f in excluded_files):
                 continue
             if not filename.endswith(ext):
@@ -258,3 +262,57 @@ class ChromaDataset:
             Fs=Fs_X, N=spec.shape[1], last=False)
 
         return spec, ann_matrix
+
+
+excluded_files = (
+    # zweieck
+    '09_-_Mr_Morgan',
+    '01_-_Spiel_Mir_Eine_Alte_Melodie',
+    '11_-_Ich_Kann_Heute_Nicht',
+    # queen
+    '14 Hammer To Fall',
+    '08 Save Me',
+    # robbie_williams
+    '11-Man Machine',
+    '01-Ghosts',
+    '11-A Place To Crash',
+    '08-Heaven From Here',
+    '09-Random Acts Of Kindness',
+    '05-South Of The Border',
+)
+ds = prepare_datasource(
+    ('zweieck', 'queen', 'robbie_williams'),
+    excluded_files=excluded_files)
+
+allowed_files = (
+    '06-Mr_Moonlight',
+    '06-Yellow_Submarine',
+    '03-I_m_Only_Sleeping',
+    '09-Penny_Lane',
+    '12-Wait',
+    '11-Do_You_Want_To_Know_A_Secret',
+    '12-A_Taste_Of_Honey',
+    '04-I_m_Happy_Just_To_Dance_With_You',
+    '03-If_I_Fell',
+    '10-I_m_Looking_Through_You',
+    '09-When_I_m_Sixty-Four',
+    '06-Till_There_Was_You',
+    '05-Octopus_s_Garden',
+    '03-All_My_Loving',
+    '05-And_I_Love_Her',
+    '02-All_I_ve_Got_To_Do',
+    '10-For_No_One',
+    '08-Because',
+    '06-She_s_Leaving_Home',
+    '04-Chains',
+    '10-Things_We_Said_Today',
+    '09-One_After_909',
+    '09-Girl',
+    '14-Run_For_Your_Life',
+    '04-Oh_Darling',
+    '04-Don_t_Bother_Me',
+    '06-I_Want_You_She_s_So_Heavy_',
+    '06-Tell_Me_Why',
+)
+beatles_ds = prepare_datasource(('beatles',), allowed_files=allowed_files)
+balanced_datasource = ds + beatles_ds
