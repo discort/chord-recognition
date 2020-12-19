@@ -38,9 +38,11 @@ class Solver:
         self.epochs = epochs
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         self.model = model.to(device=self.device)
+        self.trained_model_name = trained_model_name
         self._reset()
 
     def train(self):
+        liveloss = PlotLosses()
         best_acc = 0.0
         for e in range(self.epochs):
             logs = {}

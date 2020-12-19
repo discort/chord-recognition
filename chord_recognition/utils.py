@@ -57,6 +57,28 @@ TRAIN_STD = np.array([
 ], dtype=np.float32).reshape(-1, 1)
 
 
+def one_hot(class_ids, num_classes):
+    """
+    Create one-hot encoding of class ids
+
+    Args:
+        class_ids:   ids of classes to map
+        num_classes: number of classes
+
+    Returns:
+        one-hot encoding of class ids
+    """
+    oh = np.zeros((len(class_ids), num_classes), dtype=np.int64)
+    oh[np.arange(len(class_ids)), class_ids] = 1
+
+    # make sure one-hot encoding corresponds to class ids
+    assert (oh.argmax(axis=1) == class_ids).all()
+    # make sure there is only one id set per vector
+    assert (oh.sum(axis=1) == 1).all()
+
+    return oh
+
+
 def read_csv(fn, header=False, add_label=False, sep=' '):
     """Reads a CSV file
 

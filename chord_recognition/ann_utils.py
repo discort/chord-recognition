@@ -196,11 +196,11 @@ def convert_chord_ann_matrix(fn_ann, chord_labels, Fs=1, N=None, last=False):
     return ann_matrix, ann_frame, ann_seg_frame, ann_seg_ind, ann_seg_sec
 
 
-def convert_annotation_matrix(ann_matrix, ext_minor=None, nonchord=False):
+def convert_annotation_matrix(ann_matrix, ext_minor=None, nonchord=True):
     """Converts annotation matrix to sequence of labels
 
     Args:
-        ann_matrix: annotation matrix
+        ann_matrix: annotation matrix (N x num_classes)
 
     Returns:
         labels_sec: list of labels sequences
@@ -208,19 +208,19 @@ def convert_annotation_matrix(ann_matrix, ext_minor=None, nonchord=False):
     chord_labels = get_chord_labels(ext_minor, nonchord=nonchord)
 
     labels_sec = []
-    N = ann_matrix.shape[1]
+    N = ann_matrix.shape[0]
     for i in range(N):
-        one_hot = ann_matrix[:, i]
+        one_hot = ann_matrix[i, :]
         label = list(itertools.compress(chord_labels, one_hot))
-        if len(label) > 0:
-            label = label[0]
-        else:
-            label = 'N'
+        if not len(label):
+            raise ValueError("Invalid chord decoding")
+        label = label[0]
         labels_sec.append(label)
     return labels_sec
 
 
 def compute_annotation(ann_matrix, hop_length, Fs, ext_minor=None, nonchord=False):
+    # ann_matrix: N x num_classes
     # Convert one-hot repr to label repr (25, 2822) -> (2822, 1)
     # Convert sequence annotation list ([s,t,'label'])
     # Convert list to structure annotation [3055, 3076, 'N'] -> (283.724286, 285.666644, 'N')]

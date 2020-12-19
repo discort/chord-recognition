@@ -1,8 +1,10 @@
 import csv
+import itertools
 import os
 
 import mir_eval
 import numpy as np
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 
@@ -10,13 +12,31 @@ from chord_recognition.ann_utils import compute_annotation
 from chord_recognition.cache import HDF5Cache
 from chord_recognition.cnn import deep_auditory_v2
 from chord_recognition.dataset import prepare_datasource, ChromaDataset, collect_files
-from chord_recognition.metrics import compute_eval_measures
 from chord_recognition.predict import predict_annotations
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 model = deep_auditory_v2(pretrained=True)
 model.eval()  # set model to evaluation mode
+
+
+def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix', cmap=plt.cm.Blues):
+    print(cm)
+    plt.imshow(cm, interpolation='nearest', cmap=cmap)
+    plt.title(title)
+    plt.colorbar()
+    tick_marks = np.arange(len(classes))
+    plt.xticks(tick_marks, classes, rotation=45)
+    plt.yticks(tick_marks, classes)
+
+    fmt = '.2f' if normalize else 'd'
+    thresh = cm.max() / 2.
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        plt.text(j, i, format(cm[i, j], fmt), horizontalalignment="center", color="white" if cm[i, j] > thresh else "black")
+
+    plt.tight_layout()
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
 
 
 def compute_eval_measures(I_ref, I_est):
@@ -110,7 +130,7 @@ def evaluate_dataset(dataset, save_ann=False, result_dir='results'):
         sample_name = ann_path.split('/')[-1].replace('.lab', '')
         spec, ann_matrix = dataset[i]
         out = predict_annotations(spec, model, device, batch_size=16)
-        P, R, F1, TP, FP, FN = compute_eval_measures(ann_matrix, out)
+        P, R, F1, TP, FP, FN = compute_eval_measures(ann_matrix, out.T)
         title = (f'Eval: <{sample_name}> N={out.shape[1]} TP={TP} FP={FP} FN={FN}'
                  f' P={P:.3f} R={R:.3f} F1={F1:.3f}')
         print(title)

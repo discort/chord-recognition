@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import BatchSampler, SequentialSampler
+from torch.utils.data import BatchSampler, SequentialSampler, DataLoader
 import torch.nn.functional as F
 
 from chord_recognition.dataset import context_window
@@ -15,28 +15,41 @@ model = deep_auditory_v2(pretrained=True)
 model.eval()  # set model to evaluation mode
 
 
-@torch.no_grad()
 def predict_annotations(spectrogram, model, device, batch_size=32, context_size=7, num_classes=25):
-    criterion = nn.Softmax(dim=1)
-    # ToDo:
-    # - vectorize funtions (get frame matrix)
     frames = context_window(spectrogram, context_size)
     frames = [preprocess_spectrogram(f) for f in frames]
     frames = np.asarray([f.reshape(1, *f.shape) for f in frames])
 
-    sampler = BatchSampler(SequentialSampler(frames), batch_size=batch_size, drop_last=False)
-    result = torch.zeros(spectrogram.shape[1], num_classes)
-    for idx in sampler:
-        inputs = torch.from_numpy(frames[idx]).to(device=device, dtype=torch.float32)
+    sampler = BatchSampler(
+        sampler=SequentialSampler(frames),
+        batch_size=batch_size,
+        drop_last=False)
+    dataloader = DataLoader(
+        dataset=frames,
+        sampler=sampler,
+        batch_size=None)
+    result = forward(model, dataloader, device, num_classes)
+    return result.data.numpy()
+
+
+@torch.no_grad()
+def forward(model, dataloader, device, num_classes, criterion=None):
+    if not criterion:
+        criterion = nn.Softmax(dim=1)
+
+    result = []
+    for inputs in dataloader:
+        inputs = inputs.to(device=device, dtype=torch.float32)
         scores = model(inputs)
         scores = criterion(scores)
         scores = scores.squeeze(3).squeeze(2)
         #scores = batch_exponential_smoothing(scores, 0.1)
-        result[idx, :] = scores
+        result.append(scores)
 
+    result = torch.cat(result)
     preds = torch.argmax(result, 1)
-    result = F.one_hot(preds, num_classes).t_()
-    return result.data.numpy()
+    result = F.one_hot(preds, num_classes)
+    return result
 
 
 def batch_exponential_smoothing(x, alpha):
@@ -81,7 +94,7 @@ def annotate_audio(audio_waveform, Fs, window_size=8192, hop_length=4096,
         fmin=65, fmax=2100, num_bands=24
     )
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    ann_matrix = predict_annotations(spec, model, device, batch_size=8)
+    ann_matrix = predict_annotations(spec, model, device, batch_size=8)  # N x num_classes
     annotations = compute_annotation(
         ann_matrix, hop_length, Fs, ext_minor=ext_minor, nonchord=nonchord)
     return annotations
