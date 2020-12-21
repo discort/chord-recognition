@@ -2,6 +2,8 @@ h5py==3.1.0
 jupyter==1.0.0
 librosa==0.8.0
 livelossplot==0.5.3
+imbalanced-learn==0.7.0
+mir-eval==0.6
 pandas==1.0.3
 pytest==6.1.1
 pytest-cov==2.10.1

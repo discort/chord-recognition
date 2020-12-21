@@ -131,7 +131,7 @@ def evaluate_dataset(dataset, save_ann=False, result_dir='results'):
         spec, ann_matrix = dataset[i]
         out = predict_annotations(spec, model, device, batch_size=16)
         P, R, F1, TP, FP, FN = compute_eval_measures(ann_matrix, out.T)
-        title = (f'Eval: <{sample_name}> N={out.shape[1]} TP={TP} FP={FP} FN={FN}'
+        title = (f'Eval: <{sample_name}> N={out.shape[0]} TP={TP} FP={FP} FN={FN}'
                  f' P={P:.3f} R={R:.3f} F1={F1:.3f}')
         print(title)
 
@@ -176,7 +176,7 @@ def print_ds_compute_average_scores(ds_name):
 
 
 def main():
-    datasource = prepare_datasource(('queen',))
+    datasource = prepare_datasource(('robbie_williams',))
     dataset = ChromaDataset(
         datasource=datasource,
         window_size=8192,
@@ -186,7 +186,7 @@ def main():
     evaluate_dataset(
         dataset=dataset,
         save_ann=True)
-    ds_name = 'queen'
+    ds_name = 'robbie_williams'
     print_ds_compute_average_scores(ds_name)
 
 

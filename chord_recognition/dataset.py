@@ -3,6 +3,7 @@ import os.path
 import random
 
 import librosa
+from imblearn.datasets import make_imbalance
 import numpy as np
 from torch.utils.data import Dataset, WeightedRandomSampler
 
@@ -11,6 +12,21 @@ from .utils import compute_chromagram, read_audio, scale_data, log_filtered_spec
     preprocess_spectrogram
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+
+
+def undersample_dataset(dataset, sampling_strategy, random_state):
+    """
+    Balance imbalanced dataset using sampling strategy
+    """
+    y = [yi for _, yi in dataset]
+    # reshape X to have (n_samples, n_features)
+    X = np.vstack([x.reshape(1, -1) for x, _ in dataset])
+    X, y = make_imbalance(
+        X, y, sampling_strategy=sampling_strategy,
+        random_state=random_state)
+    # Reshape X to it's original form
+    X = [X[i].reshape(1, 105, 15) for i in range(X.shape[0])]
+    return X, y
 
 
 def split_datasource(datasource, lengths):
