@@ -9,6 +9,9 @@ __pycache__/
 # Model cache
 *.hdf5
 
+# Cache for evaluation
+results/
+
 # Distribution / packaging
 .Python
 build/

@@ -14,14 +14,12 @@ from chord_recognition.cnn import deep_auditory_v2
 from chord_recognition.dataset import prepare_datasource, ChromaDataset, collect_files
 from chord_recognition.predict import predict_annotations
 
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-model = deep_auditory_v2(pretrained=True)
-model.eval()  # set model to evaluation mode
-
-
-def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix', cmap=plt.cm.Blues):
-    print(cm)
+def plot_confusion_matrix(
+        cm, classes, normalize=False,
+        title='Confusion matrix',
+        cmap=plt.cm.Blues,
+        fontsize=10):
     plt.imshow(cm, interpolation='nearest', cmap=cmap)
     plt.title(title)
     plt.colorbar()
@@ -32,7 +30,11 @@ def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix'
     fmt = '.2f' if normalize else 'd'
     thresh = cm.max() / 2.
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-        plt.text(j, i, format(cm[i, j], fmt), horizontalalignment="center", color="white" if cm[i, j] > thresh else "black")
+        plt.text(
+            j, i, format(cm[i, j], fmt),
+            horizontalalignment="center",
+            color="white" if cm[i, j] > thresh else "black",
+            fontsize=fontsize)
 
     plt.tight_layout()
     plt.ylabel('True label')
@@ -122,14 +124,14 @@ def save_annotations(annotations, file_path):
             writer.writerow(ann)
 
 
-def evaluate_dataset(dataset, save_ann=False, result_dir='results'):
+def evaluate_dataset(dataset, model, save_ann=False, result_dir='results'):
     total_R = total_P = total_F = 0.0
     total_count = 0
     for i in range(len(dataset)):
         ann_path = dataset.datasource[i][0]
         sample_name = ann_path.split('/')[-1].replace('.lab', '')
         spec, ann_matrix = dataset[i]
-        out = predict_annotations(spec, model, device, batch_size=16)
+        out = predict_annotations(spec, model, torch.device('cpu'), batch_size=16)
         P, R, F1, TP, FP, FN = compute_eval_measures(ann_matrix, out.T)
         title = (f'Eval: <{sample_name}> N={out.shape[0]} TP={TP} FP={FP} FN={FN}'
                  f' P={P:.3f} R={R:.3f} F1={F1:.3f}')
@@ -176,6 +178,9 @@ def print_ds_compute_average_scores(ds_name):
 
 
 def main():
+    model = deep_auditory_v2(pretrained=True)
+    model.eval()  # set model to evaluation mode
+
     datasource = prepare_datasource(('robbie_williams',))
     dataset = ChromaDataset(
         datasource=datasource,
@@ -185,6 +190,7 @@ def main():
         cache=HDF5Cache('chroma_cache.hdf5'))
     evaluate_dataset(
         dataset=dataset,
+        model=model,
         save_ann=True)
     ds_name = 'robbie_williams'
     print_ds_compute_average_scores(ds_name)

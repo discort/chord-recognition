@@ -7,17 +7,14 @@ import torch.nn.functional as F
 from chord_recognition.dataset import context_window
 from chord_recognition.ann_utils import compute_annotation
 from chord_recognition.utils import exponential_smoothing,\
-    log_filtered_spectrogram, preprocess_spectrogram
+    log_filtered_spectrogram, Rescale
 from .cnn import deep_auditory_v2
-
-
-model = deep_auditory_v2(pretrained=True)
-model.eval()  # set model to evaluation mode
 
 
 def predict_annotations(spectrogram, model, device, batch_size=32, context_size=7, num_classes=25):
     frames = context_window(spectrogram, context_size)
-    frames = [preprocess_spectrogram(f) for f in frames]
+    transform = Rescale()
+    frames = [transform(f) for f in frames]
     frames = np.asarray([f.reshape(1, *f.shape) for f in frames])
 
     sampler = BatchSampler(
@@ -86,6 +83,9 @@ def annotate_audio(audio_waveform, Fs, window_size=8192, hop_length=4096,
     #     Fs=Fs,
     #     window_size=window_size,
     #     hop_length=hop_length)
+    model = deep_auditory_v2(pretrained=True)
+    model.eval()  # set model to evaluation mode
+
     spec = log_filtered_spectrogram(
         audio_waveform=audio_waveform,
         sr=Fs,

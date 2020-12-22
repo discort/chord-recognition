@@ -22,11 +22,14 @@ def deep_auditory(pretrained: bool = False, **kwargs: Any):
     return DeepAuditory(**kwargs)
 
 
-def deep_auditory_v2(pretrained: bool = False, **kwargs: Any):
+def deep_auditory_v2(
+        pretrained: bool = False,
+        model_name: str = 'deep_auditory_v2.pth',
+        **kwargs: Any):
     if pretrained:
         model = DeepAuditoryV2(**kwargs)
         state_dict = torch.load(
-            os.path.join(CURR_DIR, 'models/deep_auditory_v2.pth'),
+            os.path.join(CURR_DIR, f'models/{model_name}'),
             map_location=device)
         model.load_state_dict(state_dict)
         return model

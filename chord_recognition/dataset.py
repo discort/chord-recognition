@@ -8,8 +8,7 @@ import numpy as np
 from torch.utils.data import Dataset, WeightedRandomSampler
 
 from .ann_utils import convert_chord_ann_matrix, get_chord_labels
-from .utils import compute_chromagram, read_audio, scale_data, log_filtered_spectrogram,\
-    preprocess_spectrogram
+from .utils import read_audio, log_filtered_spectrogram
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
@@ -216,11 +215,6 @@ class ChromaDataset:
         spec, ann_matrix = sample
         result = []
 
-        # Context window cannot be applied because the length of frames is too short
-        # if self.context_size:
-        #     if spec.shape[1] < (2 * self.context_size + 1):
-        #         return result
-
         container = context_window(spec, self.context_size)
         for frame, idx_target in zip(container, range(spec.shape[1])):
             label = ann_matrix[:, idx_target]
@@ -260,11 +254,7 @@ class ChromaDataset:
     @_cached
     def _make_sample(self, ann_path, audio_path):
         audio_waveform, sampling_rate = read_audio(audio_path, Fs=None, mono=True)
-        # spec = compute_chromagram(audio_waveform=audio_waveform,
-        #                           Fs=sampling_rate,
-        #                           n_chroma=105,
-        #                           window_size=self.window_size,
-        #                           hop_length=self.hop_length)
+
         spec = log_filtered_spectrogram(
             audio_waveform=audio_waveform,
             sr=sampling_rate,
@@ -278,57 +268,3 @@ class ChromaDataset:
             Fs=Fs_X, N=spec.shape[1], last=False)
 
         return spec, ann_matrix
-
-
-excluded_files = (
-    # zweieck
-    '09_-_Mr_Morgan',
-    '01_-_Spiel_Mir_Eine_Alte_Melodie',
-    '11_-_Ich_Kann_Heute_Nicht',
-    # queen
-    '14 Hammer To Fall',
-    '08 Save Me',
-    # robbie_williams
-    '11-Man Machine',
-    '01-Ghosts',
-    '11-A Place To Crash',
-    '08-Heaven From Here',
-    '09-Random Acts Of Kindness',
-    '05-South Of The Border',
-)
-ds = prepare_datasource(
-    ('zweieck', 'queen', 'robbie_williams'),
-    excluded_files=excluded_files)
-
-allowed_files = (
-    '06-Mr_Moonlight',
-    '06-Yellow_Submarine',
-    '03-I_m_Only_Sleeping',
-    '09-Penny_Lane',
-    '12-Wait',
-    '11-Do_You_Want_To_Know_A_Secret',
-    '12-A_Taste_Of_Honey',
-    '04-I_m_Happy_Just_To_Dance_With_You',
-    '03-If_I_Fell',
-    '10-I_m_Looking_Through_You',
-    '09-When_I_m_Sixty-Four',
-    '06-Till_There_Was_You',
-    '05-Octopus_s_Garden',
-    '03-All_My_Loving',
-    '05-And_I_Love_Her',
-    '02-All_I_ve_Got_To_Do',
-    '10-For_No_One',
-    '08-Because',
-    '06-She_s_Leaving_Home',
-    '04-Chains',
-    '10-Things_We_Said_Today',
-    '09-One_After_909',
-    '09-Girl',
-    '14-Run_For_Your_Life',
-    '04-Oh_Darling',
-    '04-Don_t_Bother_Me',
-    '06-I_Want_You_She_s_So_Heavy_',
-    '06-Tell_Me_Why',
-)
-beatles_ds = prepare_datasource(('beatles',), allowed_files=allowed_files)
-balanced_datasource = ds + beatles_ds

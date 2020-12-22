@@ -170,34 +170,14 @@ class Rescale:
     """
 
     def __call__(self, frame):
-        return preprocess_spectrogram(frame)
+        return standardize(frame, TRAIN_MEAN, TRAIN_STD)
 
 
-def preprocess_spectrogram(spec):
+def standardize(x, mean=None, std=None, eps=1e-20):
     """
-    Subtracts the features mean and divides by the standard deviation.
+    Rescale inputs to have a mean of 0 and std of 1
     """
-    return (spec - TRAIN_MEAN) / TRAIN_STD
-
-
-def scale_data(x, method="norm", axis=0):
-    """
-    Args:
-        method: method of scaling data. Available methods are
-            'norm' and 'std' reffering to normalization/standardization
-    """
-    if method == "norm":
-        return normalize(x, axis)
-    elif method == "std":
-        return standardize(x, axis)
-    else:
-        raise ValueError(f"method: {method} is not allowed")
-
-
-def standardize(x, axis=0, eps=1e-20):
-    # Rescales data to have a mean of 0 and std of 1
-    std = x.std(axis=axis, keepdims=True)
-    return (x - x.mean(axis=axis, keepdims=True)) / (std + eps)
+    return (x - mean) / (std + eps)
 
 
 def normalize(x, axis=0, eps=1e-20):
