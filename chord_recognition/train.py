@@ -1,10 +1,12 @@
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import Dataset, WeightedRandomSampler
+import os
 
 from livelossplot import PlotLosses
+import numpy as np
+import torch
+import torch.nn.functional as F
+from torch.utils.data import WeightedRandomSampler
+
+MODELS_DIR = os.path.join(os.path.dirname(__file__), 'models')
 
 
 def get_weighted_random_sampler(targets, train_targets):
@@ -109,5 +111,5 @@ class Solver:
         if is_best:
             torch.save(
                 self.model.state_dict(),
-                f'chord_recognition/models/{self.trained_model_name}'
+                os.path.join(MODELS_DIR, self.trained_model_name)
             )
