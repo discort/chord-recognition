@@ -73,7 +73,7 @@ def print_audio_sample_rate(datasource=None):
             ('queen', 'beatles', 'robie_williams', 'zweieck'))]
     for audio_path in datasource:
         audio_name = audio_path.replace('/Users/discort/ml-course/chord-recognition/data/', '')
-        _, sampling_rate = read_audio(audio_path, Fs=None, mono=True)
+        _, sampling_rate = read_audio(audio_path, sr=None, mono=True)
         print(f"Fs for {audio_name}: {sampling_rate}")
         assert sampling_rate == 44100
 
@@ -167,12 +167,30 @@ def pitch_shift_data(datasource, max_shift=4):
 
 
 def main():
-    datasource = prepare_datasource(('beatles', ))
-    train_dataset = ChromaDataset(
-        datasource, window_size=8192, hop_length=4096,
+    from sklearn.model_selection import train_test_split
+    from imblearn.datasets import make_imbalance
+    ds = prepare_datasource(('beatles', ))
+
+    dataset = ChromaDataset(
+        ds, window_size=8192, hop_length=4096,
+        context_size=0,
         cache=HDF5Cache('chroma_cache.hdf5'))
-    #from .dataset import get_weighted_random_sampler
-    #get_weighted_random_sampler(train_dataset)
+    # sampling_strategy = {
+    #     0: 10000,
+    #     2: 10000,
+    #     4: 10000,
+    #     7: 10000,
+    #     9: 10000,
+    #     11: 10000,
+    #     24: 10000,
+    # }
+    # # reshape X to have (n_samples, n_features)
+    # X = np.vstack([x.reshape(1, -1) for x, _ in dataset])
+    # y = [yi for _, yi in dataset]
+    # X, y = make_imbalance(X, y,
+    #                       sampling_strategy=sampling_strategy)
+    # # Reshape X to it's original form
+    # X = [x.reshape(1, 105, 15) for x, _ in X.shape[0]]
     # train_dataset[43]
     # loader_train = DataLoader(dataset, shuffle=True, num_workers=0, batch_size=32)
 

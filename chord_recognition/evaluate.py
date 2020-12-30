@@ -8,9 +8,9 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 
-from chord_recognition.ann_utils import compute_annotation
+from chord_recognition.ann_utils import convert_onehot_ann
 from chord_recognition.cache import HDF5Cache
-from chord_recognition.cnn import deep_auditory_v2
+from chord_recognition.models import deep_auditory_v2
 from chord_recognition.dataset import prepare_datasource, ChromaDataset, collect_files
 from chord_recognition.predict import predict_annotations
 
@@ -131,7 +131,7 @@ def evaluate_dataset(dataset, model, save_ann=False, result_dir='results'):
         ann_path = dataset.datasource[i][0]
         sample_name = ann_path.split('/')[-1].replace('.lab', '')
         spec, ann_matrix = dataset[i]
-        out = predict_annotations(spec, model, torch.device('cpu'), batch_size=16)
+        out = predict_annotations(spec, model, torch.device('cpu'))
         P, R, F1, TP, FP, FN = compute_eval_measures(ann_matrix, out.T)
         title = (f'Eval: <{sample_name}> N={out.shape[0]} TP={TP} FP={FP} FN={FN}'
                  f' P={P:.3f} R={R:.3f} F1={F1:.3f}')
@@ -181,7 +181,7 @@ def main():
     model = deep_auditory_v2(pretrained=True)
     model.eval()  # set model to evaluation mode
 
-    datasource = prepare_datasource(('robbie_williams',))
+    datasource = prepare_datasource(('beatles',))
     dataset = ChromaDataset(
         datasource=datasource,
         window_size=8192,
@@ -192,7 +192,7 @@ def main():
         dataset=dataset,
         model=model,
         save_ann=True)
-    ds_name = 'robbie_williams'
+    ds_name = 'beatles'
     print_ds_compute_average_scores(ds_name)
 
 

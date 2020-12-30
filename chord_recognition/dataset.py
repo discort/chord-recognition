@@ -8,7 +8,7 @@ import numpy as np
 from torch.utils.data import Dataset, WeightedRandomSampler
 
 from .ann_utils import convert_chord_ann_matrix, get_chord_labels
-from .utils import read_audio, log_filtered_spectrogram
+from .utils import read_audio, context_window, log_filtered_spectrogram
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
@@ -99,74 +99,6 @@ def collect_files(dir_path, ext='.lab', excluded_files=(), allowed_files=()):
     return files
 
 
-class ContextIterator:
-    """Allows iterate through the data with context
-
-    X_i = [l_s, ..., l_i, ..., lt]
-    s = i - C
-    t = i + C
-    i - index of the target
-    C - context size
-    """
-
-    def __init__(self, data, context_size):
-        self.data = data
-        self.context_size = context_size
-
-    def __iter__(self):
-        self.index = 0
-        return self
-
-    def __len__(self):
-        return len(self.data)
-
-    def __next__(self):
-        n = self.data.shape[1]
-        if self.index >= n:
-            raise StopIteration
-
-        if self.index < self.context_size:
-            start = 0
-            end = 2 * self.context_size + 1
-        elif (self.index + self.context_size) >= n:
-            start = n - (2 * self.context_size) - 1
-            end = n
-        else:
-            start = self.index - self.context_size
-            end = self.index + self.context_size + 1
-        self.index += 1
-        return self.data[:, start:end]
-
-
-def context_window(x, context_size):
-    assert context_size % 2 == 1, "context_size must be odd"
-    assert x.shape[1] > 2 * context_size + 1, "Low size x"
-    pad_number = context_size
-    left_pad_idx = pad_number
-    M, N = x.shape
-    dtype = x.dtype
-    #result = np.zeros((N, M, 2 * context_size + 1))
-    result = []
-    right_pad_idx = 1
-    for i in range(N):
-        if i - pad_number < 0:
-            right = x[:, range(0, i + pad_number + 1)]
-            left_pad = x[:, :left_pad_idx]
-            window = np.concatenate([left_pad, right], axis=1)
-            left_pad_idx -= 1
-        elif i + pad_number >= N:
-            left = x[:, range(i - pad_number, N)]
-            right_pad = x[:, -right_pad_idx:]
-            window = np.concatenate([left, right_pad], axis=1)
-            right_pad_idx += 1
-        else:
-            indexes = list(range(i - pad_number, i)) + list(range(i, i + pad_number + 1))
-            window = x[:, indexes]
-        #result[i, :, :] = window
-        result.append(window.astype(dtype))
-    return result
-
-
 class ChromaDataset:
     def __init__(self, datasource, window_size=4096, hop_length=2048,
                  context_size=7, cache=None, transform=None):
@@ -205,7 +137,7 @@ class ChromaDataset:
         """
         for ann_path, audio_path in self.datasource:
             sample = self._make_sample(ann_path, audio_path)
-            if not self.context_size:
+            if self.context_size is None:
                 frame_data = [sample]
             else:
                 frame_data = self._make_frames(sample)
@@ -215,9 +147,15 @@ class ChromaDataset:
         spec, ann_matrix = sample
         result = []
 
-        container = context_window(spec, self.context_size)
-        for frame, idx_target in zip(container, range(spec.shape[1])):
-            label = ann_matrix[:, idx_target]
+        if self.context_size:
+            container = context_window(spec, self.context_size)
+        else:
+            # default container w/o context
+            container = (spec[:, i] for i in range(spec.shape[1]))
+
+        # Initialize sample/target pairs
+        for idx, frame in enumerate(container):
+            label = ann_matrix[:, idx]
             # Exclude only unlabeled data
             if not label.any():
                 continue
@@ -226,10 +164,6 @@ class ChromaDataset:
                 frame = self.transform(frame)
             result.append((frame.reshape(1, *frame.shape), np.argmax(label)))
         return result
-
-    def _preprocess_sample(self, sample):
-        spec, ann_matrix = sample
-        return spec, ann_matrix
 
     def _cached(func):
         def wrapped(self, *args):
@@ -253,7 +187,7 @@ class ChromaDataset:
 
     @_cached
     def _make_sample(self, ann_path, audio_path):
-        audio_waveform, sampling_rate = read_audio(audio_path, Fs=None, mono=True)
+        audio_waveform, sampling_rate = read_audio(audio_path, sr=None, mono=True)
 
         spec = log_filtered_spectrogram(
             audio_waveform=audio_waveform,

@@ -219,14 +219,20 @@ def convert_annotation_matrix(ann_matrix, ext_minor=None, nonchord=True):
     return labels_sec
 
 
-def compute_annotation(ann_matrix, hop_length, Fs, ext_minor=None, nonchord=False):
-    # ann_matrix: N x num_classes
+def convert_onehot_ann(ann_matrix, hop_length, sr, ext_minor=None, nonchord=False):
+    """Convert annotation matrix to basic ann representation
+
     # Convert one-hot repr to label repr (25, 2822) -> (2822, 1)
     # Convert sequence annotation list ([s,t,'label'])
     # Convert list to structure annotation [3055, 3076, 'N'] -> (283.724286, 285.666644, 'N')]
+
+    Args:
+        ann_matrix: N x num_classes
+        hop_length: number audio of frames between STFT columns
+    """
     label_seq = convert_annotation_matrix(ann_matrix, ext_minor=ext_minor, nonchord=True)
     ann_seg = convert_label_sequence(label_seq)
-    Fs_X = Fs / hop_length
+    Fs_X = sr / hop_length
     ann = convert_annotation_segments(ann_seg, Fs=Fs_X)
     return ann
 

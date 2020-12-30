@@ -4,6 +4,7 @@ import librosa
 import madmom as mm
 import numpy as np
 import pandas as pd
+import torch
 
 warnings.filterwarnings("ignore")
 
@@ -62,7 +63,7 @@ def one_hot(class_ids, num_classes):
     Create one-hot encoding of class ids
 
     Args:
-        class_ids:   ids of classes to map
+        class_ids: ids of classes to map
         num_classes: number of classes
 
     Returns:
@@ -77,6 +78,45 @@ def one_hot(class_ids, num_classes):
     assert (oh.sum(axis=1) == 1).all()
 
     return oh
+
+
+def context_window(x, context_size):
+    """
+    Iterate through each item of sequence padded with elements (with context)
+
+    math::
+        X_{i} = [l_{i-C}, ..., l_{i}, ..., l_{i+C}]
+        i - index of the target
+        C - context size
+
+    Args:
+        x: ndarray (M, N) where N - length
+        context_size: amount of elements padded to each item
+    """
+    assert context_size % 2 == 1, "context_size must be odd"
+    assert x.shape[1] > 2 * context_size + 1, "Low size x"
+    assert x.ndim == 2, "X dimension must be 2"
+
+    pad_number = context_size
+    left_pad_idx = pad_number
+    N = x.shape[1]
+    dtype = x.dtype
+    right_pad_idx = 1
+    for i in range(N):
+        if i - pad_number < 0:
+            right = x[:, range(0, i + pad_number + 1)]
+            left_pad = x[:, :left_pad_idx]
+            window = np.concatenate([left_pad, right], axis=1)
+            left_pad_idx -= 1
+        elif i + pad_number >= N:
+            left = x[:, range(i - pad_number, N)]
+            right_pad = x[:, -right_pad_idx:]
+            window = np.concatenate([left, right_pad], axis=1)
+            right_pad_idx += 1
+        else:
+            indexes = list(range(i - pad_number, i)) + list(range(i, i + pad_number + 1))
+            window = x[:, indexes]
+        yield window.astype(dtype)
 
 
 def read_csv(fn, header=False, add_label=False, sep=' '):
@@ -123,38 +163,15 @@ def log_compression(v, gamma=1):
     return np.log(1 + gamma * v)
 
 
-def compute_chromagram(audio_waveform, Fs, window_size=8192, hop_length=4096,
-                       n_chroma=105, norm=None, tuning=0):
-    """
-    Computes a chromagram from a waveform
-
-    The quarter-tone spectrogram contains only bins corresponding to frequencies
-    between Fmin=65Hz (~C2) and Fmax=2100Hz (~C7) and has 24 bins per octave.
-    This results in a dimensionality of 105 bins
-
-    Args:
-        audio_waveform: Audio time series (np.ndarray [shape=(n,))
-        Fs: Sampling rate
-        window_size: FFT window size
-        hop_length: Hop length
-        n_chroma: Number of chroma bins to produce
-        norm: Column-wise normalization (if None, no normalization is performed)
-        tuning: Deviation from A440 tuning in fractional bins (cents)
-
-    Returns:
-        chromagram: Normalized energy for each chroma bin at each frame
-                    (np.ndarray [shape=(n_chroma, t)])
-    """
-    chromagram = librosa.feature.chroma_stft(audio_waveform, sr=Fs, norm=norm,
-                                             n_fft=window_size, hop_length=hop_length,
-                                             tuning=tuning, n_chroma=n_chroma)
-    return chromagram
-
-
 def log_filtered_spectrogram(audio_waveform, sr, window_size,
                              hop_length, fmin, fmax, num_bands):
     """
-    Logarithmic Filtered Spectrogram
+    Args:
+        audio_waveform: audio time series (np.ndarray [shape=(n,))
+        sr: audio sampling rate of `audio_waveform`
+        window_size: FFT window size
+        hop_length: Hop length for STFT
+
     """
     spectrogram = mm.audio.LogarithmicFilteredSpectrogram(
         audio_waveform, sample_rate=sr,
@@ -162,6 +179,15 @@ def log_filtered_spectrogram(audio_waveform, sr, window_size,
         fmin=fmin, fmax=fmax, num_bands=num_bands).T
     spectrogram = np.copy(spectrogram)
     return spectrogram
+
+
+def batch_exponential_smoothing(x, alpha):
+    batsches, _ = x.shape
+    result = []
+    for i in range(batsches):
+        x_smooth = exponential_smoothing(x[i, :].numpy(), alpha)
+        result.append(torch.from_numpy(x_smooth))
+    return torch.stack(result)
 
 
 class Rescale:
@@ -173,30 +199,29 @@ class Rescale:
         return standardize(frame, TRAIN_MEAN, TRAIN_STD)
 
 
-def standardize(x, mean=None, std=None, eps=1e-20):
+def standardize(x, mean, std, eps=1e-20):
     """
     Rescale inputs to have a mean of 0 and std of 1
     """
     return (x - mean) / (std + eps)
 
 
-def normalize(x, axis=0, eps=1e-20):
-    # Rescales data to have values within the range of 0 and 1
-    min = x.min(axis=axis, keepdims=True)
-    return (x - min) / (x.max(axis=axis, keepdims=True) - min + eps)
+def destandardize(x, mean, std):
+    """Undo preprocessing on a frame"""
+    return x * std + mean
 
 
-def read_audio(path, Fs=None, mono=False, duration=None):
-    """Reads an audio file
+def read_audio(path, sr=None, mono=True, duration=None):
+    """Load an audio file as a floating point time series.
 
     Args:
-        path: Path to audio file
-        Fs: Resample audio to given sampling rate. Use native sampling rate if None.
+        path: path to an audio file
+        sr: target sampling rate
         mono (bool): Convert multi-channel file to mono.
         duration: only load up to this much audio (in seconds)
 
     Returns:
-        x: Audio time series (np.ndarray [shape=(n,))
-        Fs: Sampling rate
+        y: Audio time series (np.ndarray [shape=(n,))
+        sr: Sampling rate of y
     """
-    return librosa.load(path, sr=Fs, mono=mono, duration=duration)
+    return librosa.load(path, sr=sr, mono=mono, duration=duration)
