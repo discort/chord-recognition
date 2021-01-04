@@ -51,7 +51,7 @@ def predict_annotations(
         preds = torch.argmax(ann_matrix, 1)
         ann_matrix = F.one_hot(preds, num_classes)
     elif postprocessing == 'hmm':
-        ann_matrix = postprocess_HMM(ann_matrix.T).T
+        ann_matrix = postprocess_HMM(ann_matrix.T, p=0.22).T
     else:
         raise ValueError(f"Invalid param: {postprocessing} for postprocessing")
     return ann_matrix

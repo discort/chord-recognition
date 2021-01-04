@@ -53,6 +53,7 @@ def viterbi_log_likelihood(A, C, B_O):
     # Backtracking
     S_opt = np.zeros(N).astype(np.int32)
     S_opt[-1] = np.argmax(D_log[:, -1])
+    S_opt[0] = np.argmax(D_log[:, 0])
     for n in range(N-2, 0, -1):
         S_opt[n] = E[int(S_opt[n+1]), n]
 

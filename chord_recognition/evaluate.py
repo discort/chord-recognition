@@ -5,8 +5,6 @@ import os
 import mir_eval
 import numpy as np
 import matplotlib.pyplot as plt
-import torch
-import torch.nn as nn
 
 from chord_recognition.ann_utils import convert_onehot_ann
 from chord_recognition.cache import HDF5Cache
@@ -131,7 +129,7 @@ def evaluate_dataset(dataset, model, save_ann=False, result_dir='results'):
         ann_path = dataset.datasource[i][0]
         sample_name = ann_path.split('/')[-1].replace('.lab', '')
         spec, ann_matrix = dataset[i]
-        out = predict_annotations(spec, model, torch.device('cpu'))
+        out = predict_annotations(spec, model)
         P, R, F1, TP, FP, FN = compute_eval_measures(ann_matrix, out.T)
         title = (f'Eval: <{sample_name}> N={out.shape[0]} TP={TP} FP={FP} FN={FN}'
                  f' P={P:.3f} R={R:.3f} F1={F1:.3f}')
@@ -140,7 +138,7 @@ def evaluate_dataset(dataset, model, save_ann=False, result_dir='results'):
         if save_ann:
             result_path = '/'.join(ann_path.split('/')[-4:]).replace('/chordlabs', '')
             result_path = os.path.join(result_dir, result_path)
-            result_ann = compute_annotation(
+            result_ann = convert_onehot_ann(
                 out, dataset.hop_length, 44100, ext_minor=':min', nonchord=True)
             save_annotations(result_ann, result_path)
 
@@ -178,10 +176,10 @@ def print_ds_compute_average_scores(ds_name):
 
 
 def main():
-    model = deep_auditory_v2(pretrained=True)
+    model = deep_auditory_v2(pretrained=True, model_name='deep_auditory_v2_exp4_3.pth')
     model.eval()  # set model to evaluation mode
 
-    datasource = prepare_datasource(('beatles',))
+    datasource = prepare_datasource(('robbie_williams',))
     dataset = ChromaDataset(
         datasource=datasource,
         window_size=8192,
@@ -192,7 +190,7 @@ def main():
         dataset=dataset,
         model=model,
         save_ann=True)
-    ds_name = 'beatles'
+    ds_name = 'robbie_williams'
     print_ds_compute_average_scores(ds_name)
 
 

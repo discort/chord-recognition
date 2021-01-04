@@ -1,12 +1,14 @@
-# Chord Recognition Library
+# Chord Recognition
 
-A library to solve Audio Chord Recognition (Chord Estimation) [problem](https://www.music-ir.org/mirex/wiki/2020:Audio_Chord_Estimation).
+The tool to solve Audio Chord Recognition (Chord Estimation) [problem](https://www.music-ir.org/mirex/wiki/2020:Audio_Chord_Estimation).
 
 Some of pre-trained model metrics of major and minor chords on [Isophonics](http://isophonics.net/datasets) and [Robbie Williams](https://www.researchgate.net/publication/260399240_Chord_and_Harmony_annotations_of_the_first_five_albums_by_Robbie_Williams) datasets.
-_ | Precision | Recall | F1-measure
---- |--- | --- | --- |
-Isophonics | 0.75 | 0.97 | 0.83 |
-Robbie Williams | 0.53 | 0.60 | 0.56 |
+_ | majmin | mirex |
+--- |--- | --- |
+beatles | 0.784 | 0.762 |
+queen | 0.808 | 0.791 |
+zweieck | 0.840 | 0.814 |
+robbie_williams | 0.905 | 0.882 |
 
 ## Installation
 
@@ -18,8 +20,8 @@ Robbie Williams | 0.53 | 0.60 | 0.56 |
 from chord_recognition.utils import read_audio
 from chord_recognition.predict import annotate_audio
 
-audio_waveform, Fs = read_audio('tests/fixtures/C_Am.mp3')
-result = annotate_audio(audio_waveform, Fs=Fs, nonchord=True)
+audio_waveform, sr = read_audio('tests/fixtures/C_Am.mp3')
+result = annotate_audio(audio_waveform, sr=sr, nonchord=True)
 print(result)
 [(0.0, 1.6718, 'N'),
  (1.6718, 3.3437, 'C'),
@@ -31,7 +33,7 @@ print(result)
 
 #### Download datasets
 
-Use this [link](https://drive.google.com/file/d/1t6MU6ZI-27e25mKYcFbM5H5oUQrst7nD/view?usp=sharing) to download Beatles, Queen and Robbie Williams datasets in [isophonics](http://www.isophonics.net/datasets) format
+Use this [link](https://drive.google.com/file/d/1diyRPrhuqphACRrni2_rrS5lbl0CRm2r/view?usp=sharing) to download Beatles, Queen and Robbie Williams datasets in [isophonics](http://www.isophonics.net/datasets) format
 
 #### Unzip data and put into root of a project
     
@@ -45,12 +47,13 @@ Use this [link](https://drive.google.com/file/d/1t6MU6ZI-27e25mKYcFbM5H5oUQrst7n
     
     py.test -q --cov=chord_recognition tests
 
-#### Notebook list
+#### Experiments
 
 ```
-nn_training.ipynb            <- Notebook containing train/val code
-evaluation.ipynb             <- For model evaluation
-chords_distribution.ipynb    <- Check chord distribution and other stats data
+experiments.ipynb  <- Describing some experiments to improve classification/segmentation
+experiment<N>.ipynb  <- A code to reproduce an experiment
+chords_analysis.ipynb  <- Check chord distribution and other stats data
+audio_analysis.ipynb  <- Check spectrogram, chromagram, etc
 ```
 
 #### Run jupyter
