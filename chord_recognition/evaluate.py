@@ -1,3 +1,4 @@
+import argparse
 import csv
 import itertools
 import os
@@ -6,11 +7,9 @@ import mir_eval
 import numpy as np
 import matplotlib.pyplot as plt
 
-from chord_recognition.ann_utils import convert_onehot_ann
 from chord_recognition.cache import HDF5Cache
-from chord_recognition.models import deep_auditory_v2
 from chord_recognition.dataset import prepare_datasource, ChromaDataset, collect_files
-from chord_recognition.predict import predict_annotations
+from chord_recognition.predict import ChordRecognition
 
 
 def plot_confusion_matrix(
@@ -122,14 +121,24 @@ def save_annotations(annotations, file_path):
             writer.writerow(ann)
 
 
-def evaluate_dataset(dataset, model, save_ann=False, result_dir='results'):
+def evaluate_dataset(dataset, save_ann=False, result_dir='results'):
     total_R = total_P = total_F = 0.0
     total_count = 0
+    estimator = ChordRecognition(
+        window_size=dataset.window_size,
+        hop_length=dataset.hop_length,
+        ext_minor=':min',
+        nonchord=True)
+
     for i in range(len(dataset)):
         ann_path = dataset.datasource[i][0]
         sample_name = ann_path.split('/')[-1].replace('.lab', '')
         spec, ann_matrix = dataset[i]
-        out = predict_annotations(spec, model)
+
+        spec = estimator.preprocess(spec)
+        out = estimator.predict_labels(spec)
+        out = estimator.postprocess(out)
+
         P, R, F1, TP, FP, FN = compute_eval_measures(ann_matrix, out.T)
         title = (f'Eval: <{sample_name}> N={out.shape[0]} TP={TP} FP={FP} FN={FN}'
                  f' P={P:.3f} R={R:.3f} F1={F1:.3f}')
@@ -138,8 +147,9 @@ def evaluate_dataset(dataset, model, save_ann=False, result_dir='results'):
         if save_ann:
             result_path = '/'.join(ann_path.split('/')[-4:]).replace('/chordlabs', '')
             result_path = os.path.join(result_dir, result_path)
-            result_ann = convert_onehot_ann(
-                out, dataset.hop_length, 44100, ext_minor=':min', nonchord=True)
+            result_ann = estimator.decode_chords(out, 44100)
+            # result_ann = convert_onehot_ann(
+            #     out, dataset.hop_length, 44100, ext_minor=':min', nonchord=True)
             save_annotations(result_ann, result_path)
 
         total_count += 1
@@ -176,22 +186,26 @@ def print_ds_compute_average_scores(ds_name):
 
 
 def main():
-    model = deep_auditory_v2(pretrained=True, model_name='deep_auditory_v2_exp4_3.pth')
-    model.eval()  # set model to evaluation mode
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-ds", help="Specify the datasource names for evaluations",
+        nargs='?', action='append')
+    args = parser.parse_args()
+    ds_names = args.ds
 
-    datasource = prepare_datasource(('robbie_williams',))
-    dataset = ChromaDataset(
-        datasource=datasource,
-        window_size=8192,
-        hop_length=4096,
-        context_size=None,
-        cache=HDF5Cache('chroma_cache.hdf5'))
-    evaluate_dataset(
-        dataset=dataset,
-        model=model,
-        save_ann=True)
-    ds_name = 'robbie_williams'
-    print_ds_compute_average_scores(ds_name)
+    for ds_name in ds_names:
+        print(f"Evaluating {ds_name} ...")
+        datasource = prepare_datasource((ds_name,))
+        dataset = ChromaDataset(
+            datasource=datasource,
+            window_size=8192,
+            hop_length=4096,
+            context_size=None,
+            cache=HDF5Cache('chroma_cache.hdf5'))
+        evaluate_dataset(
+            dataset=dataset,
+            save_ann=True)
+        print_ds_compute_average_scores(ds_name)
 
 
 if __name__ == '__main__':

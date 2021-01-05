@@ -1,14 +1,14 @@
 # Chord Recognition
 
-The tool to solve Audio Chord Recognition (Chord Estimation) [problem](https://www.music-ir.org/mirex/wiki/2020:Audio_Chord_Estimation).
+The tools to solve Audio Chord Recognition (Chord Estimation) [problem](https://www.music-ir.org/mirex/wiki/2020:Audio_Chord_Estimation).
 
-Some of pre-trained model metrics of major and minor chords on [Isophonics](http://isophonics.net/datasets) and [Robbie Williams](https://www.researchgate.net/publication/260399240_Chord_and_Harmony_annotations_of_the_first_five_albums_by_Robbie_Williams) datasets.
+Some of pre-trained model metrics of major and minor chords made by [mir_eval](https://github.com/craffel/mir_eval) on [Isophonics](http://isophonics.net/datasets) and [Robbie Williams](https://www.researchgate.net/publication/260399240_Chord_and_Harmony_annotations_of_the_first_five_albums_by_Robbie_Williams) datasets.
 _ | majmin | mirex |
 --- |--- | --- |
-beatles | 0.784 | 0.762 |
-queen | 0.808 | 0.791 |
-zweieck | 0.840 | 0.814 |
-robbie_williams | 0.905 | 0.882 |
+beatles | 0.792 | 0.771 |
+queen | 0.815 | 0.798 |
+zweieck | 0.839 | 0.811 |
+robbie_williams | 0.908 | 0.885 |
 
 ## Installation
 
@@ -17,16 +17,14 @@ robbie_williams | 0.905 | 0.882 |
 ## Usage
 
 ```python
-from chord_recognition.utils import read_audio
-from chord_recognition.predict import annotate_audio
+from chord_recognition import estimate_chords
 
-audio_waveform, sr = read_audio('tests/fixtures/C_Am.mp3')
-result = annotate_audio(audio_waveform, sr=sr, nonchord=True)
+result = estimate_chords(audio_path='tests/fixtures/C_Am.mp3', nonchord=True)
 print(result)
 [(0.0, 1.6718, 'N'),
- (1.6718, 3.3437, 'C'),
- (3.3437, 5.1084, 'N'),
- (5.1084, 6.0372, 'Am')]
+ (1.6718, 3.7152, 'C'),
+ (3.7152, 4.2725, 'N'),
+ (4.2725, 6.0372, 'Am')]
 ```
 
 ## Development
@@ -47,13 +45,19 @@ Use this [link](https://drive.google.com/file/d/1diyRPrhuqphACRrni2_rrS5lbl0CRm2
     
     py.test -q --cov=chord_recognition tests
 
+#### Evaluation
+
+```
+python -m chord_recognition.evaluate -ds <dataset_name>
+```
+
 #### Experiments
 
 ```
-experiments.ipynb  <- Describing some experiments to improve classification/segmentation
-experiment<N>.ipynb  <- A code to reproduce an experiment
-chords_analysis.ipynb  <- Check chord distribution and other stats data
 audio_analysis.ipynb  <- Check spectrogram, chromagram, etc
+chords_analysis.ipynb  <- Check chord distribution and other stats data
+experiments.ipynb  <- Describing some experiments to improve classification/
+experiment<N>.ipynb  <- A code to reproduce an experiment
 ```
 
 #### Run jupyter
