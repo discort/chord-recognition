@@ -12,7 +12,7 @@ robbie_williams | 0.908 | 0.885 |
 
 ## How it works
 
-`chord-recognition` takes an audio file in mp3 format, and then represents it as waweform in `numpy.array`. It computes [STFT](https://en.wikipedia.org/wiki/Short-time_Fourier_transform) to split audio into frames representing 1.5 seconds of audio. It applies a simple [ConvNet](https://en.wikipedia.org/wiki/Convolutional_neural_network) to each frame to classify into 25 classes (12 minor, 12 major plus a non-chord class). Finally the result is enhanced by [HMM](https://en.wikipedia.org/wiki/Hidden_Markov_model) smoothing.
+`chord-recognition` takes an audio file in `mp3` format, and then represents it as waweform in `numpy.array`. It computes [STFT](https://en.wikipedia.org/wiki/Short-time_Fourier_transform) to split the input into frames representing 1.5 seconds of the audio. It applies a simple [ConvNet](https://en.wikipedia.org/wiki/Convolutional_neural_network) to each frame to classify into 25 classes (12 minor, 12 major plus a non-chord class). Finally the result is enhanced by [HMM](https://en.wikipedia.org/wiki/Hidden_Markov_model) smoothing.
 
 ## Installation
 
