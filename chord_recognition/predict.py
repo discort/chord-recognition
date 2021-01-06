@@ -10,6 +10,17 @@ from chord_recognition.utils import batch_exponential_smoothing,\
     log_filtered_spectrogram, Rescale, context_window, read_audio, one_hot
 
 
+DEFAULT_SAMPLE_RATE = 44100
+
+
+class UnsupportedSampleRate(Exception):
+    """
+    Chord Recognition pipeline does not work
+    correctly with provided sampling rate
+    """
+    pass
+
+
 @torch.no_grad()
 def forward(model, dataloader, device, num_classes, criterion=None):
     if not criterion:
@@ -103,6 +114,9 @@ class ChordRecognition:
         Returns:
             chords in [(start, end, label), ...] format
         """
+        if sr != DEFAULT_SAMPLE_RATE:
+            raise UnsupportedSampleRate(f"{sr} is not supported")
+
         features = self.extract_features(audio_waveform, sr)
         features = self.preprocess(features)
         logits = self.predict_labels(features)
