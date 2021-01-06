@@ -20,6 +20,7 @@ setuptools.setup(
     ],
     python_requires='>=3.6',
     install_requires=[
+        'Cython==0.29.21',
         'madmom==0.16.1',
         'mir-eval==0.6',
         'librosa==0.8.0',
