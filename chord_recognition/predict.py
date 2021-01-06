@@ -115,7 +115,7 @@ class ChordRecognition:
             chords in [(start, end, label), ...] format
         """
         if sr != DEFAULT_SAMPLE_RATE:
-            raise UnsupportedSampleRate(f"{sr} is not supported")
+            raise UnsupportedSampleRate(f"Sample rate: {sr} is not supported")
 
         features = self.extract_features(audio_waveform, sr)
         features = self.preprocess(features)
