@@ -25,8 +25,9 @@ setuptools.setup(
         'librosa==0.8.0',
         'livelossplot==0.5.3',
         'pandas==1.0.3',
-        'torch==1.4.0',
+        'scikit-learn==0.23.2',
         'seaborn==0.11.0',
+        'torch==1.4.0',
     ],
     package_data={'chord_recognition': ['models/*.pth']},
 )
