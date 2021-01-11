@@ -3,8 +3,11 @@ import os
 from livelossplot import PlotLosses
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import WeightedRandomSampler
+from sklearn.metrics import f1_score
+from sklearn.metrics import precision_recall_fscore_support as score
 
 MODELS_DIR = os.path.join(os.path.dirname(__file__), 'models')
 
@@ -31,6 +34,7 @@ class Solver:
         optimizer,
         learning_rate,
         dataloaders,
+        loss=None,
         epochs=1,
         trained_model_name='best_model.pth',
     ):
@@ -41,11 +45,14 @@ class Solver:
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         self.model = model.to(device=self.device)
         self.trained_model_name = trained_model_name
+        self.loss = loss
+        if not self.loss:
+            self.loss = nn.CrossEntropyLoss()
         self._reset()
 
     def train(self):
         liveloss = PlotLosses()
-        best_acc = 0.0
+        best_f1 = 0.0
         for e in range(self.epochs):
             logs = {}
             for phase in ['train', 'val']:
@@ -54,27 +61,27 @@ class Solver:
                 else:
                     self.model.eval()
 
-                running_loss, running_corrects = self._step(phase)
+                running_loss, running_f1 = self._step(phase)
 
                 epoch_loss = running_loss / len(self.dataloaders[phase].dataset)
-                epoch_acc = running_corrects.float() / len(self.dataloaders[phase].dataset)
+                epoch_f1 = running_f1.float() / len(self.dataloaders[phase].dataset)
 
                 prefix = ''
                 if phase == 'val':
                     prefix = 'val_'
-                    is_best = epoch_acc > best_acc
-                    best_acc = max(epoch_acc, best_acc)
+                    is_best = epoch_f1 > best_f1
+                    best_f1 = max(epoch_f1, best_f1)
                     self._save_checkpoint(is_best)
 
                 logs[prefix + ' log loss'] = epoch_loss.item()
-                logs[prefix + 'accuracy'] = epoch_acc.item()
+                logs[prefix + ' F1'] = epoch_f1.item()
 
             liveloss.update(logs)
             liveloss.send()
 
     def _step(self, phase):
         running_loss = 0.0
-        running_corrects = 0
+        running_f1 = 0.0
 
         for inputs, labels in self.dataloaders[phase]:
             inputs = inputs.to(device=self.device, dtype=torch.float32)
@@ -86,10 +93,11 @@ class Solver:
 
             scores = self.model(inputs)
             scores = scores.squeeze(3).squeeze(2)
-            loss = F.cross_entropy(scores, labels)
+            loss = self.loss(scores, labels)
 
-            _, preds = torch.max(scores, 1)
-            running_corrects += torch.sum(preds == labels)
+            preds = torch.argmax(scores, 1)
+            # Take the average of the f1-score for each class
+            running_f1 += f1_score(preds.data.numpy(), labels.data.numpy(), average='macro')
 
             if phase == 'train':
                 # This is the backwards pass: compute the gradient of the loss with
@@ -102,7 +110,7 @@ class Solver:
 
             running_loss += loss.detach() * inputs.size(0)
 
-        return running_loss, running_corrects
+        return running_loss, running_f1
 
     def _reset(self):
         pass

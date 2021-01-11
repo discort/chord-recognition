@@ -100,7 +100,7 @@ def collect_files(dir_path, ext='.lab', excluded_files=(), allowed_files=()):
 
 
 class ChromaDataset:
-    def __init__(self, datasource, window_size=4096, hop_length=2048,
+    def __init__(self, datasource, window_size=4096, hop_length=4410,
                  context_size=7, cache=None, transform=None):
         """
         Args:
@@ -153,7 +153,7 @@ class ChromaDataset:
             # default container w/o context
             container = (spec[:, i] for i in range(spec.shape[1]))
 
-        # Initialize sample/target pairs
+        # Initialize input/target pairs
         for idx, frame in enumerate(container):
             label = ann_matrix[:, idx]
             # Exclude only unlabeled data
@@ -187,6 +187,8 @@ class ChromaDataset:
 
     @_cached
     def _make_sample(self, ann_path, audio_path):
+        # ToDo:
+        # check audio sample-rate to equal dataset sample rate
         audio_waveform, sampling_rate = read_audio(audio_path, sr=None, mono=True)
 
         spec = log_filtered_spectrogram(
@@ -196,9 +198,9 @@ class ChromaDataset:
             hop_length=self.hop_length,
             fmin=65, fmax=2100, num_bands=24)
 
-        Fs_X = sampling_rate / self.hop_length
+        fps = sampling_rate / self.hop_length
         ann_matrix, _, _, _, _ = convert_chord_ann_matrix(
             fn_ann=ann_path, chord_labels=self.chord_labels,
-            Fs=Fs_X, N=spec.shape[1], last=False)
+            Fs=fps, N=spec.shape[1], last=False)
 
         return spec, ann_matrix
