@@ -61,27 +61,33 @@ class Solver:
                 else:
                     self.model.eval()
 
-                running_loss, running_f1 = self._step(phase)
+                targets = []
+                outputs = []
+
+                running_loss, e_targets, e_outputs = self._step(phase)
+                targets.extend(e_targets)
+                outputs.extend(e_outputs)
 
                 epoch_loss = running_loss / len(self.dataloaders[phase].dataset)
-                epoch_f1 = running_f1 / len(self.dataloaders[phase].dataset)
+                f1 = f1_score(outputs, targets, average='weighted')
 
                 prefix = ''
                 if phase == 'val':
                     prefix = 'val_'
-                    is_best = epoch_f1 > best_f1
-                    best_f1 = max(epoch_f1, best_f1)
+                    is_best = f1 > best_f1
+                    best_f1 = max(f1, best_f1)
                     self._save_checkpoint(is_best)
 
                 logs[prefix + ' log loss'] = epoch_loss.item()
-                logs[prefix + ' F1'] = epoch_f1
+                logs[prefix + ' F1'] = f1
 
             liveloss.update(logs)
             liveloss.send()
 
     def _step(self, phase):
         running_loss = 0.0
-        running_f1 = 0.0
+        targets = []
+        outputs = []
 
         for inputs, labels in self.dataloaders[phase]:
             inputs = inputs.to(device=self.device, dtype=torch.float32)
@@ -96,8 +102,8 @@ class Solver:
             loss = self.loss(scores, labels)
 
             preds = torch.argmax(scores, 1)
-            # Take the average of the f1-score for each class
-            running_f1 += f1_score(preds.cpu().data.numpy(), labels.cpu().data.numpy(), average='macro')
+            targets.append(preds)
+            outputs.append(labels)
 
             if phase == 'train':
                 # This is the backwards pass: compute the gradient of the loss with
@@ -110,7 +116,7 @@ class Solver:
 
             running_loss += loss.detach() * inputs.size(0)
 
-        return running_loss, running_f1
+        return running_loss, targets, outputs
 
     def _reset(self):
         pass
