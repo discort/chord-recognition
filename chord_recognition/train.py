@@ -7,7 +7,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import WeightedRandomSampler
 from sklearn.metrics import f1_score
-from sklearn.metrics import precision_recall_fscore_support as score
 
 MODELS_DIR = os.path.join(os.path.dirname(__file__), 'models')
 
@@ -61,12 +60,7 @@ class Solver:
                 else:
                     self.model.eval()
 
-                targets = []
-                outputs = []
-
-                running_loss, e_targets, e_outputs = self._step(phase)
-                targets.extend(e_targets)
-                outputs.extend(e_outputs)
+                running_loss, targets, outputs = self._step(phase)
 
                 epoch_loss = running_loss / len(self.dataloaders[phase].dataset)
                 f1 = f1_score(outputs, targets, average='weighted')
@@ -102,8 +96,8 @@ class Solver:
             loss = self.loss(scores, labels)
 
             preds = torch.argmax(scores, 1)
-            targets.append(preds)
-            outputs.append(labels)
+            outputs.append(preds.cpu().data.numpy())
+            targets.append(labels.cpu().data.numpy())
 
             if phase == 'train':
                 # This is the backwards pass: compute the gradient of the loss with
@@ -116,6 +110,8 @@ class Solver:
 
             running_loss += loss.detach() * inputs.size(0)
 
+        outputs = np.concatenate(outputs)
+        targets = np.concatenate(targets)
         return running_loss, targets, outputs
 
     def _reset(self):
