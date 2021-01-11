@@ -64,7 +64,7 @@ class Solver:
                 running_loss, running_f1 = self._step(phase)
 
                 epoch_loss = running_loss / len(self.dataloaders[phase].dataset)
-                epoch_f1 = running_f1.float() / len(self.dataloaders[phase].dataset)
+                epoch_f1 = running_f1 / len(self.dataloaders[phase].dataset)
 
                 prefix = ''
                 if phase == 'val':
@@ -74,7 +74,7 @@ class Solver:
                     self._save_checkpoint(is_best)
 
                 logs[prefix + ' log loss'] = epoch_loss.item()
-                logs[prefix + ' F1'] = epoch_f1.item()
+                logs[prefix + ' F1'] = epoch_f1
 
             liveloss.update(logs)
             liveloss.send()
@@ -97,7 +97,7 @@ class Solver:
 
             preds = torch.argmax(scores, 1)
             # Take the average of the f1-score for each class
-            running_f1 += f1_score(preds.data.numpy(), labels.data.numpy(), average='macro')
+            running_f1 += f1_score(preds.cpu().data.numpy(), labels.cpu().data.numpy(), average='macro')
 
             if phase == 'train':
                 # This is the backwards pass: compute the gradient of the loss with
