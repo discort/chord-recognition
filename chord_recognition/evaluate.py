@@ -199,7 +199,7 @@ def main():
         dataset = ChromaDataset(
             datasource=datasource,
             window_size=8192,
-            hop_length=4096,
+            hop_length=4410,
             context_size=None,
             cache=HDF5Cache('chroma_cache.hdf5'))
         evaluate_dataset(
