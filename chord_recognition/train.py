@@ -4,21 +4,34 @@ from livelossplot import PlotLosses
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.utils.data import WeightedRandomSampler
 from sklearn.metrics import f1_score
 
 MODELS_DIR = os.path.join(os.path.dirname(__file__), 'models')
 
 
-def get_weighted_random_sampler(targets, train_targets):
-    _, class_counts = np.unique(targets, return_counts=True)
+def get_weighted_random_sampler(labels, labels_train):
+    """
+    Make a sample to work with unbalanced dataset.
+    Each batch should have balanced class distribution.
+
+    Args:
+        labels - list of all available labels
+        labels_train - labels of a train dataset
+    """
+    _, class_counts = np.unique(labels, return_counts=True)
 
     weights = 1. / (np.array(class_counts, dtype='float'))
-    sampling_weights = [weights[target] for target in train_targets]
+    train_sampling_weights = [weights[label] for label in labels_train]
+
+    # If `replacement=True`, the sampler oversamples the minority classes with replacement,
+    # such that the samples will be repeated.
+    # If you don’t want to repeat samples you can specify `replacement=False`
+    # and adapt the num_samples to get fewer balanced batches.
     sampler = WeightedRandomSampler(
-        weights=sampling_weights,
-        num_samples=len(sampling_weights))
+        weights=train_sampling_weights,
+        num_samples=len(train_sampling_weights),
+        replacement=True)
     return sampler
 
 
