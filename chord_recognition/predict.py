@@ -7,7 +7,7 @@ from chord_recognition.ann_utils import convert_onehot_ann
 from chord_recognition.models import deep_auditory_v2
 from chord_recognition.models import postprocess_HMM
 from chord_recognition.utils import batch_exponential_smoothing,\
-    log_filtered_spectrogram, Rescale, context_window, read_audio, one_hot
+    log_filtered_spectrogram, Rescale, split_with_context, read_audio, one_hot
 
 
 DEFAULT_SAMPLE_RATE = 44100
@@ -178,7 +178,7 @@ class ChordRecognition:
                             context_size=7,
                             transform=Rescale(),
                             batch_size=32):
-        frames = context_window(spectrogram, context_size)
+        frames = split_with_context(spectrogram, context_size)
         frames = np.asarray([transform(f).reshape(1, *f.shape) for f in frames])
 
         sampler = BatchSampler(
