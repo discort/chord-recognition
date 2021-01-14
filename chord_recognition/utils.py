@@ -77,7 +77,7 @@ def one_hot(class_ids, num_classes):
     return oh
 
 
-def context_window(x, context_size):
+def split_with_context(x, context_size, pad_data=None):
     """
     Iterate through each item of sequence padded with elements (with context)
 
@@ -95,7 +95,8 @@ def context_window(x, context_size):
     n_features, n_frames = x.shape
     dtype = x.dtype
 
-    pad_data = np.zeros((n_features, context_size))
+    if not pad_data:
+        pad_data = np.zeros((n_features, context_size))
     padded = np.hstack([pad_data, x, pad_data])
 
     start = context_size
@@ -104,6 +105,13 @@ def context_window(x, context_size):
         indexes = list(range(i - context_size, i)) + list(range(i, i + context_size + 1))
         window = padded[:, indexes]
         yield window.astype(dtype)
+
+
+def split_data_with_context(data, context_size):
+    """
+    Split data ndarray in to sequence with context
+    """
+    pass
 
 
 def read_csv(fn, header=False, add_label=False, sep=' '):

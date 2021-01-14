@@ -185,13 +185,13 @@ def convert_chord_ann_matrix(fn_ann, chord_labels, Fs=1, N=None, last=False):
         ann_frame = ann_frame + [pad_symbol] * (N - len(ann_frame))
     ann_seg_frame = convert_sequence_ann(ann_frame, Fs=1)
 
-    num_chords = len(chord_labels)
+    num_chords = len(chord_labels) + 1
     ann_matrix = np.zeros((num_chords, N), dtype=np.int64)
     for n in range(N):
         label = ann_frame[n]
-        # Generates a one-entry only for labels that are contained in "chord_labels"
+        # Generates a one-hot representation only for labels that are contained in "chord_labels"
         if label in chord_labels:
-            label_index = chord_labels.index(label)
+            label_index = chord_labels.index(label) + 1
             ann_matrix[label_index, n] = 1
     return ann_matrix, ann_frame, ann_seg_frame, ann_seg_ind, ann_seg_sec
 

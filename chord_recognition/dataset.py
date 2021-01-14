@@ -8,7 +8,7 @@ import numpy as np
 from torch.utils.data import Dataset, WeightedRandomSampler
 
 from .ann_utils import convert_chord_ann_matrix, get_chord_labels
-from .utils import read_audio, context_window, log_filtered_spectrogram
+from .utils import read_audio, split_with_context, log_filtered_spectrogram
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
@@ -100,13 +100,24 @@ def collect_files(dir_path, ext='.lab', excluded_files=(), allowed_files=()):
 
 
 class ChromaDataset:
-    def __init__(self, datasource, window_size=4096, hop_length=4410,
-                 context_size=7, cache=None, transform=None):
+    def __init__(
+            self, datasource,
+            window_size=4096,
+            hop_length=4410,
+            context_size=7,
+            cache=None,
+            transform=None):
         """
         Args:
             datasource: list of tuples - label:source file path notation
+            window_size (int)
+            hop_length (int)
+            context_size (int)
+            context_y (bool) - Indicate whether or not pad y by a context
+                defined by `context_size`
+            frame_hadler (ann_utils.Target)
             cache: cache.Cache obj - use cached data
-            transform (callable, optional): Optional transform to be applied
+            transform (callable): Optional transform to be applied
                 on a sample.
         """
         self.datasource = datasource
@@ -148,7 +159,7 @@ class ChromaDataset:
         result = []
 
         if self.context_size:
-            container = context_window(spec, self.context_size)
+            container = split_with_context(spec, self.context_size)
         else:
             # default container w/o context
             container = (spec[:, i] for i in range(spec.shape[1]))
@@ -204,3 +215,55 @@ class ChromaDataset:
             Fs=fps, N=spec.shape[1], last=False)
 
         return spec, ann_matrix
+
+
+class BlankChromaDataset(ChromaDataset):
+    def __init__(
+            self, datasource,
+            window_size=4096,
+            hop_length=4410,
+            context_size=7,
+            cache=None,
+            transform=None):
+        self.datasource = datasource
+        self.window_size = window_size
+        self.hop_length = hop_length
+        self.chord_labels = get_chord_labels(ext_minor='m', nonchord=True)
+        self.num_classes = len(self.chord_labels)
+        self._frames = []
+        self.context_size = context_size
+        self.cache = cache
+        self.transform = transform
+        self._init_dataset()
+
+    def _make_frames(self, sample):
+        spec, ann_matrix = sample
+        result = []
+
+        T = 2 * self.context_size + 1
+        frames = split_with_context(spec, self.context_size)
+        anns = split_with_context(ann_matrix, self.context_size)
+        # Initialize input/target pairs
+        for frame, labels in zip(frames, anns):
+            # Exclude only unlabeled data
+            if not labels.any():
+                continue
+
+            labels = self._pad_labels(np.argmax(labels, 0), T, self.context_size)
+            if not labels.any():
+                continue
+            result.append((frame.reshape(1, *frame.shape), labels))
+        return result
+
+    @staticmethod
+    def _pad_labels(labels, T, context_size):
+        """
+        T - input sequence length
+        S - max target length
+        """
+        N = len(labels)
+        S = T - context_size
+
+        # result = np.pad(labels, pad_width=(0, offset), mode='constant', constant_values=0)
+        # Make targets shorter than inputs. Avoid infinite losses
+        return labels[-S:]

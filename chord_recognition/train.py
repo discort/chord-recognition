@@ -57,14 +57,14 @@ class Solver:
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         self.model = model.to(device=self.device)
         self.trained_model_name = trained_model_name
-        self.loss = loss
-        if not self.loss:
-            self.loss = nn.CrossEntropyLoss()
+        self.loss_name = loss
+        self.criterion = self._get_criterion(loss)
         self._reset()
 
     def train(self):
         liveloss = PlotLosses()
         best_f1 = 0.0
+        best_loss = np.inf
         for e in range(self.epochs):
             logs = {}
             for phase in ['train', 'val']:
@@ -76,24 +76,26 @@ class Solver:
                 running_loss, targets, outputs = self._step(phase)
 
                 epoch_loss = running_loss / len(self.dataloaders[phase].dataset)
-                f1 = f1_score(outputs, targets, average='weighted')
+                #f1 = f1_score(outputs, targets, average='weighted')
 
                 prefix = ''
                 if phase == 'val':
                     prefix = 'val_'
-                    is_best = f1 > best_f1
-                    best_f1 = max(f1, best_f1)
+                    #is_best = f1 > best_f1
+                    #best_f1 = max(f1, best_f1)
+                    is_best = epoch_loss < best_loss
+                    best_loss = epoch_loss
                     self._save_checkpoint(is_best)
 
                 logs[prefix + ' log loss'] = epoch_loss.item()
-                logs[prefix + ' F1'] = f1
+                #logs[prefix + ' F1'] = f1
 
             liveloss.update(logs)
             liveloss.send()
 
     def _step(self, phase):
         running_loss = 0.0
-        targets = []
+        targets_list = []
         outputs = []
 
         for inputs, labels in self.dataloaders[phase]:
@@ -105,12 +107,21 @@ class Solver:
                 self.optimizer.zero_grad()
 
             scores = self.model(inputs)
-            scores = scores.squeeze(3).squeeze(2)
-            loss = self.loss(scores, labels)
 
-            preds = torch.argmax(scores, 1)
-            outputs.append(preds.cpu().data.numpy())
-            targets.append(labels.cpu().data.numpy())
+            if self.loss_name == 'ctc':
+                N, C, T = scores.shape
+                scores = scores.reshape(T, N, C)  # For ctc loss
+                input_lengths = torch.full(size=(N,), fill_value=T, dtype=torch.long, device=self.device)
+                labels_lengths = torch.full((N,), 8, dtype=torch.long, device=self.device)
+                log_probs = scores.log_softmax(2)
+                loss = self.criterion(log_probs, labels, input_lengths, labels_lengths)
+            else:
+                # cross-entropy
+                loss = self.criterion(scores, labels)
+                preds = torch.argmax(scores, 1)
+
+                outputs.append(preds.cpu().data.numpy())
+                targets_list.append(labels.cpu().data.numpy())
 
             if phase == 'train':
                 # This is the backwards pass: compute the gradient of the loss with
@@ -123,12 +134,29 @@ class Solver:
 
             running_loss += loss.detach() * inputs.size(0)
 
-        outputs = np.concatenate(outputs)
-        targets = np.concatenate(targets)
-        return running_loss, targets, outputs
+        if outputs:
+            outputs = np.concatenate(outputs)
+        if targets_list:
+            targets_list = np.concatenate(targets_list)
+        return running_loss, targets_list, outputs
 
     def _reset(self):
         pass
+
+    @staticmethod
+    def _encode_inputs(preds):
+        """
+        Encode inputs for passing to CTC loss
+        """
+        return preds
+
+    @staticmethod
+    def _get_criterion(loss_name):
+        losses = {
+            'cross-entropy': nn.CrossEntropyLoss(),
+            'ctc': nn.CTCLoss(),
+        }
+        return losses.get(loss_name, 'cross-entropy')
 
     def _save_checkpoint(self, is_best):
         if is_best:
