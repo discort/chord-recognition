@@ -31,9 +31,7 @@ class DeepHarmony(nn.Module):
         # N x T x F x S
         x = x.transpose(0, 1)
         # T x N x F x S
-        stack = torch.empty(T, N, self.num_classes)
-        for i in range(S):
-            stack[i] = self.deep_auditory(x[i].view(N, 1, F, S))  # N x C
+        stack = torch.stack([self.deep_auditory(x[i].view(N, 1, F, S)) for i in range(T)])
         # T x N x C
         x = stack.log_softmax(2)
         # T x N x C
