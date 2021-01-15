@@ -106,22 +106,21 @@ class Solver:
                 # will update.
                 self.optimizer.zero_grad()
 
-            scores = self.model(inputs)
+            out = self.model(inputs)
 
             if self.loss_name == 'ctc':
-                N, C, T = scores.shape
-                scores = scores.reshape(T, N, C)  # For ctc loss
+                T, N, C = out.shape
                 input_lengths = torch.full(size=(N,), fill_value=T, dtype=torch.long, device=self.device)
                 labels_lengths = torch.full((N,), 8, dtype=torch.long, device=self.device)
-                log_probs = scores.log_softmax(2)
-                loss = self.criterion(log_probs, labels, input_lengths, labels_lengths)
-            else:
-                # cross-entropy
-                loss = self.criterion(scores, labels)
-                preds = torch.argmax(scores, 1)
+                loss = self.criterion(out, labels, input_lengths, labels_lengths)
+            elif self.loss_name == 'cross-entropy':
+                loss = self.criterion(out, labels)
+                preds = torch.argmax(out, 1)
 
                 outputs.append(preds.cpu().data.numpy())
                 targets_list.append(labels.cpu().data.numpy())
+            else:
+                raise ValueError("Invalid loss name")
 
             if phase == 'train':
                 # This is the backwards pass: compute the gradient of the loss with

@@ -100,18 +100,28 @@ def split_with_context(x, context_size, pad_data=None):
     padded = np.hstack([pad_data, x, pad_data])
 
     start = context_size
-    stop = n_frames - context_size
+    stop = padded.shape[1] - context_size
     for i in range(start, stop):
         indexes = list(range(i - context_size, i)) + list(range(i, i + context_size + 1))
         window = padded[:, indexes]
         yield window.astype(dtype)
 
 
-def split_data_with_context(data, context_size):
+def stack_frames(sequence, n_frames, last=False):
     """
-    Split data ndarray in to sequence with context
+    Stack items from a sequence into frames by `n_frames` size
     """
-    pass
+    stack = []
+    stack_i = []
+    for item in sequence:
+        if len(stack_i) < n_frames:
+            stack_i.append(item)
+        elif len(stack_i) == n_frames:
+            stack.append(np.stack(stack_i))
+            stack_i = []
+    if last and len(stack_i) > 0:
+        stack.append(np.stack(stack_i))
+    return stack
 
 
 def read_csv(fn, header=False, add_label=False, sep=' '):
@@ -193,8 +203,12 @@ class Rescale:
     Subtracts the frame mean and divides by the standard deviation.
     """
 
+    def __init__(self, mean=None, std=None):
+        self.mean = mean
+        self.std = std
+
     def __call__(self, frame):
-        return standardize(frame, TRAIN_MEAN, TRAIN_STD)
+        return standardize(frame, self.mean, self.std)
 
 
 def standardize(x, mean, std, eps=1e-20):

@@ -8,7 +8,7 @@ import numpy as np
 from torch.utils.data import Dataset, WeightedRandomSampler
 
 from .ann_utils import convert_chord_ann_matrix, get_chord_labels
-from .utils import read_audio, split_with_context, log_filtered_spectrogram
+from .utils import read_audio, split_with_context, stack_frames, log_filtered_spectrogram
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
@@ -135,8 +135,11 @@ class ChromaDataset:
         return len(self._frames)
 
     def __getitem__(self, idx):
-        if isinstance(idx, int):
-            return self._frames[idx]
+        if isinstance(idx, (int, np.int64)):
+            inputs, targets = self._frames[idx]
+            if self.transform:
+                inputs = self.transform(inputs)
+            return inputs, targets
         elif isinstance(idx, np.ndarray):
             frames = np.array(self._frames)[idx]
             return [(f[0], f[1]) for f in frames]
@@ -217,53 +220,51 @@ class ChromaDataset:
         return spec, ann_matrix
 
 
-class BlankChromaDataset(ChromaDataset):
-    def __init__(
-            self, datasource,
-            window_size=4096,
-            hop_length=4410,
-            context_size=7,
-            cache=None,
-            transform=None):
-        self.datasource = datasource
-        self.window_size = window_size
-        self.hop_length = hop_length
-        self.chord_labels = get_chord_labels(ext_minor='m', nonchord=True)
-        self.num_classes = len(self.chord_labels)
-        self._frames = []
-        self.context_size = context_size
-        self.cache = cache
-        self.transform = transform
-        self._init_dataset()
+class StackedFrameDataset(ChromaDataset):
+    def __init__(self, T=20, S=8, *args, **kwargs):
+        """
+        T - time step in frames
+        S - max target length
+        """
+        self.T = T
+        self.S = S
+        super(StackedFrameDataset, self).__init__(*args, **kwargs)
 
     def _make_frames(self, sample):
         spec, ann_matrix = sample
         result = []
 
-        T = 2 * self.context_size + 1
-        frames = split_with_context(spec, self.context_size)
-        anns = split_with_context(ann_matrix, self.context_size)
+        T = self.T
+        S = self.S
+        frames = stack_frames(split_with_context(spec, self.context_size), T)
+        targets = np.argmax(ann_matrix, 0)
+        targets = stack_frames(targets, T)
         # Initialize input/target pairs
-        for frame, labels in zip(frames, anns):
-            # Exclude only unlabeled data
+        for sframe, labels in zip(frames, targets):
+            # Exclude blank labeled data
             if not labels.any():
                 continue
 
-            labels = self._pad_labels(np.argmax(labels, 0), T, self.context_size)
-            if not labels.any():
-                continue
-            result.append((frame.reshape(1, *frame.shape), labels))
+            labels = self._cleanup_labels(labels, S)
+            result.append((sframe, labels))
         return result
 
     @staticmethod
-    def _pad_labels(labels, T, context_size):
+    def _cleanup_labels(labels, S):
         """
-        T - input sequence length
+        Sequentially remove duplicate labels
+
         S - max target length
         """
         N = len(labels)
-        S = T - context_size
-
-        # result = np.pad(labels, pad_width=(0, offset), mode='constant', constant_values=0)
+        result = []
+        prev_label = labels[0]
+        result.append(prev_label)
+        for i in range(1, N):
+            if prev_label != labels[i]:
+                result.append(labels[i])
+                prev_label = labels[i]
+        offset = S - len(result)
+        result = np.pad(np.array(result), pad_width=(0, offset), mode='constant', constant_values=0)
         # Make targets shorter than inputs. Avoid infinite losses
-        return labels[-S:]
+        return result
