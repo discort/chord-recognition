@@ -245,17 +245,17 @@ class StackedFrameDataset(ChromaDataset):
             if not labels.any():
                 continue
 
-            labels = self._cleanup_labels(labels, S)
+            labels = self._cleanup_labels(labels)
             result.append((sframe, labels))
         return result
 
-    @staticmethod
-    def _cleanup_labels(labels, S):
+    def _cleanup_labels(self, labels):
         """
         Sequentially remove duplicate labels
 
         S - max target length
         """
+        S = self.S
         N = len(labels)
         result = []
         prev_label = labels[0]
@@ -264,7 +264,9 @@ class StackedFrameDataset(ChromaDataset):
             if prev_label != labels[i]:
                 result.append(labels[i])
                 prev_label = labels[i]
+
+        result = np.array(result)
         offset = S - len(result)
-        result = np.pad(np.array(result), pad_width=(0, offset), mode='constant', constant_values=0)
+        result = np.pad(result, pad_width=(0, offset), mode='constant', constant_values=0)
         # Make targets shorter than inputs. Avoid infinite losses
         return result

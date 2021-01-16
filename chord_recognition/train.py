@@ -111,7 +111,10 @@ class Solver:
             if self.loss_name == 'ctc':
                 T, N, C = out.shape
                 input_lengths = torch.full(size=(N,), fill_value=T, dtype=torch.long, device=self.device)
-                labels_lengths = torch.full((N,), 8, dtype=torch.long, device=self.device)
+                #labels_lengths = torch.full((N,), 8, dtype=torch.long, device=self.device)
+                nonzero_labels = labels > 0
+                labels_lengths = (nonzero_labels).sum(dim=1)
+                labels = labels[nonzero_labels]
                 loss = self.criterion(out, labels, input_lengths, labels_lengths)
             elif self.loss_name == 'cross-entropy':
                 loss = self.criterion(out, labels)
