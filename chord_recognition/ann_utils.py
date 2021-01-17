@@ -286,3 +286,26 @@ def convert_annotation_segments(ann_seg, Fs=1, round_decimals=4):
             t = np.around(t, decimals=round_decimals)
         result.append((s, t, r[2]))
     return result
+
+
+class ChordModel:
+    """
+    N - batch size
+    S - max length of sequence
+    """
+
+    def __init__(self):
+        self.labels = get_chord_labels(nonchord=True)
+        self.idx_labels_map = {idx: l for idx, l in enumerate(['-'] + self.labels)}
+
+    def idx_to_label(self, idx):
+        return self.idx_labels_map[idx]
+
+    def onehot_to_labels(self, argmax_vector):
+        return [self.idx_to_label(idx) for idx in argmax_vector]
+
+    def label_to_onehot(self, label):
+        """
+        Converts label representation to one-hot vector
+        """
+        raise NotImplemented

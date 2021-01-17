@@ -55,6 +55,28 @@ TRAIN_STD = np.array([0.6644172 , 0.6671606 , 0.6716639 , 0.6677901 , 0.6526045 
 dtype=np.float32).reshape(-1, 1)
 
 
+def ctc_greedy_decoder(scores, seq_len, blank_index=0, merge_repeated=True):
+    _, N, _ = scores.shape  # TxNxC
+    output = []
+    # For each batch entry, identify the transitions
+    for b in range(N):
+        seq_len_b = seq_len[b]
+        output_b = []
+        prev_class_ix = -1
+
+        # Concatenate most probable characters per time-step which yields the best path
+        # Remove duplicate characters and all blanks
+        for t in range(seq_len_b):
+            row = scores[t][b]
+            max_class_ix = np.argmax(row)
+            if (max_class_ix != blank_index and not
+                    (merge_repeated and max_class_ix == prev_class_ix)):
+                output_b.append(max_class_ix)
+            prev_class_ix = max_class_ix
+        output.append(np.array(output_b, dtype=np.int32))
+    return output
+
+
 def one_hot(class_ids, num_classes):
     """
     Create one-hot encoding of class ids
