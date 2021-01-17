@@ -7,7 +7,7 @@ import torch.nn as nn
 from torch.utils.data import WeightedRandomSampler
 
 from .ann_utils import ChordModel
-from .evaluate import compute_cer
+from .evaluate import compute_cer, compute_wer
 from .utils import ctc_greedy_decoder
 
 MODELS_DIR = os.path.join(os.path.dirname(__file__), 'models')
@@ -47,7 +47,6 @@ class Solver:
         self,
         model,
         optimizer,
-        learning_rate,
         dataloaders,
         loss=None,
         epochs=1,
@@ -55,13 +54,12 @@ class Solver:
     ):
         self.optimizer = optimizer
         self.dataloaders = dataloaders
-        self.learning_rate = learning_rate
         self.epochs = epochs
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         self.model = model.to(device=self.device)
         self.trained_model_name = trained_model_name
         self.loss_name = loss
-        self.criterion = self._get_criterion(loss)
+        self.criterion = nn.CTCLoss()
         self.chord_model = ChordModel()
         self._reset()
 
@@ -76,7 +74,7 @@ class Solver:
                 else:
                     self.model.eval()
 
-                running_loss, avg_cer = self._step(phase)
+                running_loss, avg_wer = self._step(phase)
 
                 epoch_loss = running_loss / len(self.dataloaders[phase].dataset)
 
@@ -88,14 +86,14 @@ class Solver:
                     self._save_checkpoint(is_best)
 
                 logs[prefix + ' log loss'] = epoch_loss.item()
-                logs[prefix + ' CER'] = avg_cer
+                logs[prefix + ' WER'] = avg_wer
 
             liveloss.update(logs)
             liveloss.send()
 
     def _step(self, phase):
         running_loss = 0.0
-        running_cer = []
+        running_wer = []
 
         for inputs, labels in self.dataloaders[phase]:
             inputs = inputs.to(device=self.device, dtype=torch.float32)
@@ -112,17 +110,18 @@ class Solver:
             # Un-pad labels by removing blank labels
             nonblank_labels = labels > 0
             labels_lengths = (nonblank_labels).sum(dim=1)
-            labels = labels[nonblank_labels]
-            loss = self.criterion(out, labels, input_lengths, labels_lengths)
+            loss = self.criterion(out, labels[nonblank_labels], input_lengths, labels_lengths)
 
-            decoded_out = ctc_greedy_decoder(out.detach().numpy(), labels_lengths)
-            targets = labels.detach().numpy()
+            decoded_out = ctc_greedy_decoder(out.cpu().detach().numpy(), labels_lengths)
+            targets = labels.cpu().detach().numpy()
             targets = [targets[n][targets[n] > 0] for n in range(N)]
             for n in range(N):
                 target_labels = ' '.join(self.chord_model.onehot_to_labels(targets[n]))
                 out_labels = ' '.join(self.chord_model.onehot_to_labels(decoded_out[n]))
-                cer = compute_cer(target_labels, out_labels)
-                running_cer.append(cer)
+                # cer = compute_cer(target_labels, out_labels)
+                wer = compute_wer(target_labels, out_labels)
+                compute_wer(target_labels, out_labels)
+                running_wer.append(wer)
 
             if phase == 'train':
                 # This is the backwards pass: compute the gradient of the loss with
@@ -135,26 +134,11 @@ class Solver:
 
             running_loss += loss.detach() * inputs.size(0)
 
-        avg_cer = sum(running_cer) / len(running_cer)
-        return running_loss, avg_cer
+        avg_wer = sum(running_wer) / len(running_wer)
+        return running_loss, avg_wer
 
     def _reset(self):
         pass
-
-    @staticmethod
-    def _encode_inputs(preds):
-        """
-        Encode inputs for passing to CTC loss
-        """
-        return preds
-
-    @staticmethod
-    def _get_criterion(loss_name):
-        losses = {
-            'cross-entropy': nn.CrossEntropyLoss(),
-            'ctc': nn.CTCLoss(),
-        }
-        return losses.get(loss_name, 'cross-entropy')
 
     def _save_checkpoint(self, is_best):
         if is_best:
