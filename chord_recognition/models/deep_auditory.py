@@ -141,7 +141,7 @@ class DeepAuditoryV2(nn.Module):
         self.maxpool1 = nn.MaxPool2d(kernel_size=(2, 1))
         self.Conv2d_3a_3x3 = BasicConv2d(32, 64, kernel_size=3)
         self.Conv2d_4a_3x3 = BasicConv2d(64, 64, kernel_size=3)
-        #self.Conv2d_5a_12x9 = BasicConv2d(64, 128, kernel_size=(12, 9))
+        # BasicConv2d(64, 128, kernel_size=(12, 9))
         self.Conv2d_5a_12x9 = FactChroma(64, channels_12x9=128)
         self.Conv2d_6a_1x1_linear = nn.Conv2d(128, num_classes, kernel_size=1)
         self.avg_pool = nn.AvgPool2d(kernel_size=(13, 3))
@@ -169,10 +169,8 @@ class DeepAuditoryV2(nn.Module):
         # N x 128 × 13 × 3
         x = self.dropout(x)
         # N x 128 × 13 × 3
-        x = self.Conv2d_6a_1x1_linear(x)
-        # N x 25 × 13 × 3
         x = self.avg_pool(x)
-        # N x 25 × 1 × 1
+        # N x 128 × 1 × 1
         x = x.squeeze(3).squeeze(2)
-        # N x 25
+        # N x 128
         return x
