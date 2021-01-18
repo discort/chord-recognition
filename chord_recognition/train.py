@@ -48,12 +48,14 @@ class Solver:
         model,
         optimizer,
         dataloaders,
+        scheduler=None,
         loss=None,
         epochs=1,
         trained_model_name='best_model.pth',
     ):
         self.optimizer = optimizer
         self.dataloaders = dataloaders
+        self.scheduler = scheduler
         self.epochs = epochs
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         self.model = model.to(device=self.device)
@@ -129,6 +131,8 @@ class Solver:
                 # Actually update the parameters of the model using the gradients
                 # computed by the backwards pass.
                 self.optimizer.step()
+                if self.scheduler:
+                    self.scheduler.step()
 
             running_loss += loss.detach() * inputs.size(0)
 
