@@ -116,11 +116,9 @@ class Solver:
             targets = labels.cpu().detach().numpy()
             targets = [targets[n][targets[n] > 0] for n in range(N)]
             for n in range(N):
-                target_labels = ' '.join(self.chord_model.onehot_to_labels(targets[n]))
-                out_labels = ' '.join(self.chord_model.onehot_to_labels(decoded_out[n]))
-                # cer = compute_cer(target_labels, out_labels)
+                target_labels = self.chord_model.onehot_to_labels(targets[n])
+                out_labels = self.chord_model.onehot_to_labels(decoded_out[n])
                 wer = compute_wer(target_labels, out_labels)
-                compute_wer(target_labels, out_labels)
                 running_wer.append(wer)
 
             if phase == 'train':

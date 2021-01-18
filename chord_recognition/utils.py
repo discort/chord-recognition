@@ -55,8 +55,21 @@ TRAIN_STD = np.array([0.6644172 , 0.6671606 , 0.6716639 , 0.6677901 , 0.6526045 
 dtype=np.float32).reshape(-1, 1)
 
 
-def ctc_greedy_decoder(scores, seq_len, blank_index=0, merge_repeated=True):
-    _, N, _ = scores.shape  # TxNxC
+def ctc_greedy_decoder_1(scores, seq_len, blank_index=0, merge_repeated=True):
+    """
+    Performs greedy decoding on the logits given in input (best path)
+
+    Args:
+        scores np.array[TxNxC] - input logits
+        seq_len np.array[N,] - vector containing sequence lengths
+        blank_index (int) - blank index number
+        merge_repeated (bool) - if consecutive logits' maximum indices are the same,
+            only the first of these is emitted
+
+    Returns:
+        list[np.array] - list of decoded vectors
+    """
+    _, N, _ = scores.shape
     output = []
     # For each batch entry, identify the transitions
     for b in range(N):
@@ -75,6 +88,20 @@ def ctc_greedy_decoder(scores, seq_len, blank_index=0, merge_repeated=True):
             prev_class_ix = max_class_ix
         output.append(np.array(output_b, dtype=np.int32))
     return output
+
+
+def ctc_greedy_decoder(logits, seq_len, blank_label=0, merge_repeated=True):
+    arg_maxes = np.argmax(logits, 2).T
+    decodes = []
+    for batch in arg_maxes:
+        decode = []
+        for j, index in enumerate(batch):
+            if index != blank_label:
+                if merge_repeated and j != 0 and index == batch[j-1]:
+                    continue
+                decode.append(index.item())
+        decodes.append(decode)
+    return decodes
 
 
 def one_hot(class_ids, num_classes):

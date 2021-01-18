@@ -77,7 +77,7 @@ def char_errors(reference, hypothesis, ignore_case=False, remove_space=False):
     return float(edit_distance), len(reference)
 
 
-def compute_wer(reference, hypothesis, ignore_case=False, delimiter=' '):
+def compute_wer(reference, hypothesis, ignore_case=False):
     """Calculate word error rate (WER). WER compares reference text and
     hypothesis text in word-level. WER is defined as:
     .. math::
@@ -88,22 +88,18 @@ def compute_wer(reference, hypothesis, ignore_case=False, delimiter=' '):
         Dw is the number of words deleted,
         Iw is the number of words inserted,
         Nw is the number of words in the reference
-    We can use levenshtein distance to calculate WER. Please draw an attention
-    that empty items will be removed when splitting sentences by delimiter.
-    :param reference: The reference sentence.
-    :type reference: basestring
-    :param hypothesis: The hypothesis sentence.
-    :type hypothesis: basestring
-    :param ignore_case: Whether case-sensitive or not.
-    :type ignore_case: bool
-    :param delimiter: Delimiter of input sentences.
-    :type delimiter: char
-    :return: Word error rate.
-    :rtype: float
-    :raises ValueError: If word number of reference is zero.
+    We can use levenshtein distance to calculate WER.
+
+    Args:
+        reference (list[str]): The reference sentence.
+        hypothesis (list[str]): The hypothesis sentence.
+        ignore_case (bool): Whether case-sensitive or not.
+    Returns:
+        float - Word error rate.
+
+    raises ValueError: If word number of reference is zero.
     """
-    edit_distance, ref_len = word_errors(reference, hypothesis, ignore_case,
-                                         delimiter)
+    edit_distance, ref_len = word_errors(reference, hypothesis, ignore_case)
 
     if ref_len == 0:
         raise ValueError("Reference's word number should be greater than 0.")
@@ -112,29 +108,22 @@ def compute_wer(reference, hypothesis, ignore_case=False, delimiter=' '):
     return wer
 
 
-def word_errors(reference, hypothesis, ignore_case=False, delimiter=' '):
+def word_errors(reference, hypothesis, ignore_case=False):
     """Compute the levenshtein distance between reference sequence and
     hypothesis sequence in word-level.
-    :param reference: The reference sentence.
-    :type reference: basestring
-    :param hypothesis: The hypothesis sentence.
-    :type hypothesis: basestring
-    :param ignore_case: Whether case-sensitive or not.
-    :type ignore_case: bool
-    :param delimiter: Delimiter of input sentences.
-    :type delimiter: char
-    :return: Levenshtein distance and word number of reference sentence.
-    :rtype: list
+    Args:
+        reference (list[str]): The reference sentence.
+        hypothesis (list[str]): The hypothesis sentence.
+        ignore_case (bool): Whether case-sensitive or not.
+    Returns:
+        (list) - Levenshtein distance and word number of reference sentence.
     """
-    if ignore_case == True:
-        reference = reference.lower()
-        hypothesis = hypothesis.lower()
+    if ignore_case is True:
+        reference = [ref.lower() for ref in reference]
+        hypothesis = [hyp.lower() for hyp in hypothesis]
 
-    ref_words = reference.split(delimiter)
-    hyp_words = hypothesis.split(delimiter)
-
-    edit_distance = _levenshtein_distance(ref_words, hyp_words)
-    return float(edit_distance), len(ref_words)
+    edit_distance = _levenshtein_distance(reference, hypothesis)
+    return float(edit_distance), len(reference)
 
 
 def _levenshtein_distance(ref, hyp):
