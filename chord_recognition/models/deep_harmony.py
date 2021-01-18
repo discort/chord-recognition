@@ -30,23 +30,68 @@ class BidirectionalGRU(nn.Module):
         return x
 
 
+# Taken from  https://github.com/SeanNaren/deepspeech.pytorch with modifications
+class SequenceWise(nn.Module):
+    def __init__(self, module):
+        """
+        Collapses input of dim T*N*H to (T*N)*H, and applies to a module.
+        Allows handling of variable sequence lengths and minibatch sizes.
+        :param module: Module to apply input to.
+        """
+        super(SequenceWise, self).__init__()
+        self.module = module
+
+    def forward(self, x):
+        t, n = x.size(0), x.size(1)
+        x = x.view(t * n, -1)
+        x = self.module(x)
+        x = x.view(t, n, -1)
+        return x
+
+
+class BatchRNN(nn.Module):
+    def __init__(self, input_size, hidden_size, rnn_type=nn.LSTM, bidirectional=False, batch_norm=True):
+        super(BatchRNN, self).__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.bidirectional = bidirectional
+        self.batch_norm = SequenceWise(nn.BatchNorm1d(input_size)) if batch_norm else None
+        self.rnn = rnn_type(input_size=input_size, hidden_size=hidden_size,
+                            bidirectional=bidirectional, bias=True)
+        self.num_directions = 2 if bidirectional else 1
+
+    def forward(self, x):
+        if self.batch_norm is not None:
+            x = self.batch_norm(x)
+        x, h = self.rnn(x)
+        return x
+
+
 class DeepHarmony(nn.Module):
     def __init__(self, num_classes: int = 26, n_rnn_layers: int = 1, rnn_dim: int = 128) -> None:
         super(DeepHarmony, self).__init__()
         self.num_classes = num_classes
-        self.deep_auditory = DeepAuditoryV2(num_classes=num_classes)
-        self.birnn_layers = nn.Sequential(*[
-            BidirectionalGRU(rnn_dim=rnn_dim if i==0 else rnn_dim*2,
-                             hidden_size=rnn_dim,
-                             dropout=0.5,
-                             batch_first=i==0)
+        self.cnn_layers = DeepAuditoryV2(num_classes=num_classes)
+        # self.birnn_layers = nn.Sequential(*[
+        #     BidirectionalGRU(rnn_dim=rnn_dim if i==0 else rnn_dim*2,
+        #                      hidden_size=rnn_dim,
+        #                      dropout=0.5,
+        #                      batch_first=i==0)
+        #     for i in range(n_rnn_layers)
+        # ])
+        self.rnn_layers = nn.Sequential(*[
+            BatchRNN(input_size=rnn_dim if i==0 else rnn_dim*2,
+                     hidden_size=rnn_dim)
             for i in range(n_rnn_layers)
         ])
-        self.classifier = nn.Sequential(
-            nn.Linear(rnn_dim*2, rnn_dim),  # birnn returns rnn_dim*2
-            nn.GELU(),
-            nn.Dropout(0.5),
-            nn.Linear(rnn_dim, self.num_classes)
+        # self.fc = nn.Sequential(
+        #     nn.Linear(rnn_dim*2, rnn_dim),  # birnn returns rnn_dim*2
+        #     nn.GELU(),
+        #     nn.Dropout(0.5),
+        #     nn.Linear(rnn_dim, self.num_classes)
+        # )
+        self.fc = nn.Sequential(
+            nn.Linear(rnn_dim, self.num_classes),  # birnn returns rnn_dim*2
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -54,21 +99,24 @@ class DeepHarmony(nn.Module):
         N, T, F, S = x.shape
         N - batch size
         T - amount of stacked frames
-        F - features
+        F_in - input features
+        F - produced features
         S - frame size
         C - number of classes
         """
         N, T, F, S = x.shape
-        # N x T x F x S
+        # N x T x F_in x S
         x = x.transpose(0, 1)
-        # T x N x F x S
-        stack = torch.stack([self.deep_auditory(x[i].view(N, 1, F, S)) for i in range(T)])
+        # T x N x F_in x S
+        x = torch.stack([self.cnn_layers(x[i].view(N, 1, F, S)) for i in range(T)])
         # T x N x F
-        stack = stack.transpose(0, 1)
+        #x = x.transpose(0, 1)
         # N x T x F
-        x = self.birnn_layers(stack)
+        #x = self.birnn_layers(x)
+        x = self.rnn_layers(x)
+        x = x.transpose(0, 1)
         # N x T x rnn_dim * 2
-        x = self.classifier(x)
+        x = self.fc(x)
         # N x T x C
         x = x.transpose(0, 1)
         # T x N x C
