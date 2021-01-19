@@ -10,24 +10,15 @@ from chord_recognition.models.deep_auditory import DeepAuditoryV2
 
 def deep_harmony(
         **kwargs: Any):
-    return DeepHarmony(num_classes=26, **kwargs)
+    return DeepHarmony(num_classes=26, bidirectional=False, **kwargs)
 
 
-class BidirectionalGRU(nn.Module):
-    def __init__(self, rnn_dim, hidden_size, dropout, batch_first):
-        super(BidirectionalGRU, self).__init__()
-        self.BiGRU = nn.GRU(
-            input_size=rnn_dim, hidden_size=hidden_size,
-            num_layers=1, batch_first=batch_first, bidirectional=True)
-        self.layer_norm = nn.LayerNorm(rnn_dim)
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, x):
-        x = self.layer_norm(x)
-        x = F.gelu(x)
-        x, _ = self.BiGRU(x)
-        x = self.dropout(x)
-        return x
+class InferenceBatchLogSoftmax(nn.Module):
+    def forward(self, input_):
+        if not self.training:
+            return F.log_softmax(input_, dim=2)
+        else:
+            return input_
 
 
 # Taken from  https://github.com/SeanNaren/deepspeech.pytorch with modifications
@@ -75,8 +66,9 @@ class BatchRNN(nn.Module):
 class DeepHarmony(nn.Module):
     def __init__(self,
                  num_classes: int = 26,
-                 n_rnn_layers: int = 3,
-                 rnn_dim: int = 128) -> None:
+                 n_rnn_layers: int = 5,
+                 rnn_dim: int = 128,
+                 bidirectional: bool = False) -> None:
         super(DeepHarmony, self).__init__()
         self.num_classes = num_classes
         self.cnn_layers = DeepAuditoryV2(num_classes=num_classes)
@@ -90,6 +82,7 @@ class DeepHarmony(nn.Module):
             nn.Linear(rnn_dim, self.num_classes, bias=False)
         )
         self.fc = nn.Sequential(SequenceWise(fully_connected))
+        self.inference_log_softmax = InferenceBatchLogSoftmax()
 
     def forward(self, x: Tensor) -> Tensor:
         """
@@ -111,6 +104,7 @@ class DeepHarmony(nn.Module):
         # T x N x rnn_dim
         x = self.fc(x)
         # T x N x C
-        x = x.log_softmax(2)
+        # identity in training mode, softmax in eval mode
+        x = self.inference_log_softmax(x)
         # T x N x C
         return x
