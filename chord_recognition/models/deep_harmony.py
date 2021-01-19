@@ -1,5 +1,4 @@
-from collections import OrderedDict
-from typing import Any, Optional, Tuple
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -10,15 +9,7 @@ from chord_recognition.models.deep_auditory import DeepAuditoryV2
 
 def deep_harmony(
         **kwargs: Any):
-    return DeepHarmony(num_classes=26, bidirectional=False, **kwargs)
-
-
-class InferenceBatchLogSoftmax(nn.Module):
-    def forward(self, input_):
-        if not self.training:
-            return F.log_softmax(input_, dim=2)
-        else:
-            return input_
+    return DeepHarmony(num_classes=26, bidirectional=True, **kwargs)
 
 
 # Taken from  https://github.com/SeanNaren/deepspeech.pytorch with modifications
@@ -60,6 +51,9 @@ class BatchRNN(nn.Module):
         if self.batch_norm is not None:
             x = self.batch_norm(x)
         x, h = self.rnn(x)
+        if self.bidirectional:
+            # (TxNxH*2) -> (TxNxH) by sum
+            x = x.view(x.size(0), x.size(1), 2, -1).sum(2).view(x.size(0), x.size(1), -1)
         return x
 
 
@@ -74,7 +68,8 @@ class DeepHarmony(nn.Module):
         self.cnn_layers = DeepAuditoryV2(num_classes=num_classes)
         self.rnn_layers = nn.Sequential(*[
             BatchRNN(input_size=rnn_dim,
-                     hidden_size=rnn_dim)
+                     hidden_size=rnn_dim,
+                     bidirectional=bidirectional)
             for i in range(n_rnn_layers)
         ])
         fully_connected = nn.Sequential(
@@ -82,11 +77,9 @@ class DeepHarmony(nn.Module):
             nn.Linear(rnn_dim, self.num_classes, bias=False)
         )
         self.fc = nn.Sequential(SequenceWise(fully_connected))
-        self.inference_log_softmax = InferenceBatchLogSoftmax()
 
     def forward(self, x: Tensor) -> Tensor:
         """
-        N, T, F, S = x.shape
         N - batch size
         T - amount of stacked frames
         F_in - input features
@@ -94,17 +87,16 @@ class DeepHarmony(nn.Module):
         S - frame size
         C - number of classes
         """
-        N, T, F, S = x.shape
+        N, T, F_in, S = x.shape
         # N x T x F_in x S
         x = x.transpose(0, 1)
         # T x N x F_in x S
-        x = torch.stack([self.cnn_layers(x[i].view(N, 1, F, S)) for i in range(T)])
+        x = torch.stack([self.cnn_layers(x[i].view(N, 1, F_in, S)) for i in range(T)])
         # T x N x F
         x = self.rnn_layers(x)
         # T x N x rnn_dim
         x = self.fc(x)
         # T x N x C
-        # identity in training mode, softmax in eval mode
-        x = self.inference_log_softmax(x)
+        x = F.log_softmax(x, dim=2)
         # T x N x C
         return x
