@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from typing import Any
 
 import torch
@@ -66,12 +67,19 @@ class DeepHarmony(nn.Module):
         super(DeepHarmony, self).__init__()
         self.num_classes = num_classes
         self.cnn_layers = DeepAuditoryV2(num_classes=num_classes)
-        self.rnn_layers = nn.Sequential(*[
-            BatchRNN(input_size=rnn_dim,
-                     hidden_size=rnn_dim,
-                     bidirectional=bidirectional)
-            for i in range(n_rnn_layers)
-        ])
+        rnns = []
+        # Add RNN layer w/o batch_norm because CNN alreavy has one
+        rnn = BatchRNN(input_size=rnn_dim,
+                       hidden_size=rnn_dim,
+                       bidirectional=bidirectional,
+                       batch_norm=False)
+        rnns.append(('0', rnn))
+        for x in range(n_rnn_layers - 1):
+            rnn = BatchRNN(input_size=rnn_dim,
+                           hidden_size=rnn_dim,
+                           bidirectional=bidirectional)
+            rnns.append(('%d' % (x + 1), rnn))
+        self.rnn_layers = nn.Sequential(OrderedDict(rnns))
         fully_connected = nn.Sequential(
             nn.BatchNorm1d(rnn_dim),
             nn.Linear(rnn_dim, self.num_classes, bias=False)

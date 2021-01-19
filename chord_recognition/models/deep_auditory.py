@@ -133,8 +133,11 @@ class DeepAuditoryV2(nn.Module):
     """Deep Auditory Model reduced by factorization
     """
 
-    def __init__(self, num_classes: int = 25) -> None:
+    def __init__(self,
+                 num_classes: int = 25,
+                 use_gap: bool = False) -> None:
         super(DeepAuditoryV2, self).__init__()
+        self.use_gap = use_gap
         self.Conv2d_1a_3x3 = BasicConv2d(1, 32, kernel_size=3, padding=1)
         self.Conv2d_2a_3x3 = BasicConv2d(32, 32, kernel_size=3, padding=1)
         self.maxpool1 = nn.MaxPool2d(kernel_size=(2, 1))
@@ -166,10 +169,15 @@ class DeepAuditoryV2(nn.Module):
         # N x 64 × 24 × 11
         x = self.Conv2d_5a_12x9(x)
         # N x 128 × 13 × 3
-        x = self.dropout(x)
-        # N x 128 × 13 × 3
+        if self.use_gap:
+            # N x 128 × 13 × 3
+            x = self.dropout(x)
+            # N x 128 × 13 × 3
+            x = self.Conv2d_6a_1x1_linear(x)
+
+        # (N x 128 × 13 × 3) or (N x 25 × 13 × 3) if use_gap
         x = self.avg_pool(x)
-        # N x 128 × 1 × 1
+        # (N x 128 × 1 × 1) or (N x 25 x 1 x 1) if use_gap
         x = x.squeeze(3).squeeze(2)
-        # N x 128
+        # (N x 128) or (N x 25) if use_gap
         return x
