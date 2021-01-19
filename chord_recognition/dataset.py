@@ -221,24 +221,23 @@ class ChromaDataset:
 
 
 class StackedFrameDataset(ChromaDataset):
-    def __init__(self, T=20, S=8, *args, **kwargs):
+    def __init__(self, seq_length=20, target_length=8, *args, **kwargs):
         """
-        T - time step in frames
-        S - max target length
+        Args:
+            seq_length (int) - sequence length in frames
+            target_length (int) - max target length
         """
-        self.T = T
-        self.S = S
+        self.seq_length = seq_length
+        self.target_length = target_length
         super(StackedFrameDataset, self).__init__(*args, **kwargs)
 
     def _make_frames(self, sample):
         spec, ann_matrix = sample
         result = []
 
-        T = self.T
-        S = self.S
-        frames = stack_frames(split_with_context(spec, self.context_size), T)
+        frames = stack_frames(split_with_context(spec, self.context_size), self.seq_length)
         targets = np.argmax(ann_matrix, 0)
-        targets = stack_frames(targets, T)
+        targets = stack_frames(targets, self.seq_length)
         # Initialize input/target pairs
         for sframe, labels in zip(frames, targets):
             # Exclude blank labeled data
@@ -252,10 +251,7 @@ class StackedFrameDataset(ChromaDataset):
     def _cleanup_labels(self, labels):
         """
         Sequentially remove duplicate labels
-
-        S - max target length
         """
-        S = self.S
         N = len(labels)
         result = []
         prev_label = labels[0]
@@ -266,7 +262,7 @@ class StackedFrameDataset(ChromaDataset):
                 prev_label = labels[i]
 
         result = np.array(result)
-        offset = S - len(result)
+        offset = self.target_length - len(result)
         result = np.pad(result, pad_width=(0, offset), mode='constant', constant_values=0)
         # Make targets shorter than inputs. Avoid infinite losses
         return result
