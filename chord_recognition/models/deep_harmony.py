@@ -33,11 +33,11 @@ class SequenceWise(nn.Module):
 
 class BatchRNN(nn.Module):
     def __init__(self,
-                 input_size,
-                 hidden_size,
-                 rnn_type=nn.LSTM,
-                 bidirectional=False,
-                 batch_norm=True):
+                 input_size: int,
+                 hidden_size: int,
+                 rnn_type: nn.RNNBase = nn.LSTM,
+                 bidirectional: bool = False,
+                 batch_norm: bool = False):
         super(BatchRNN, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -45,7 +45,6 @@ class BatchRNN(nn.Module):
         self.batch_norm = SequenceWise(nn.BatchNorm1d(input_size)) if batch_norm else None
         self.rnn = rnn_type(input_size=input_size, hidden_size=hidden_size,
                             bidirectional=bidirectional, bias=True)
-        self.num_directions = 2 if bidirectional else 1
 
     def forward(self, x):
         if self.batch_norm is not None:
@@ -73,7 +72,7 @@ class DeepHarmony(nn.Module):
                        hidden_size=rnn_dim,
                        rnn_type=rnn_type,
                        bidirectional=bidirectional,
-                       batch_norm=False)
+                       batch_norm=True)
         rnns.append(('0', rnn))
         for x in range(n_rnn_layers - 1):
             rnn = BatchRNN(input_size=rnn_dim,
