@@ -8,9 +8,8 @@ from torch import Tensor
 from chord_recognition.models.deep_auditory import DeepAuditoryV2
 
 
-def deep_harmony(
-        **kwargs: Any):
-    return DeepHarmony(rnn_type=nn.LSTM, num_classes=26, bidirectional=True, **kwargs)
+def deep_harmony(**kwargs: Any):
+    return DeepHarmony(**kwargs)
 
 
 # Taken from  https://github.com/SeanNaren/deepspeech.pytorch with modifications
@@ -60,11 +59,11 @@ class BatchRNN(nn.Module):
 
 class DeepHarmony(nn.Module):
     def __init__(self,
-                 rnn_type: nn.RNNBase,
+                 rnn_type: nn.RNNBase = nn.LSTM,
                  num_classes: int = 26,
                  n_rnn_layers: int = 5,
                  rnn_dim: int = 128,
-                 bidirectional: bool = False) -> None:
+                 bidirectional: bool = True) -> None:
         super(DeepHarmony, self).__init__()
         self.num_classes = num_classes
         self.cnn_layers = DeepAuditoryV2(num_classes=num_classes)
