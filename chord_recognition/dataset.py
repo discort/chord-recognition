@@ -254,11 +254,17 @@ class StackedFrameDataset(ChromaDataset):
         """
         N = len(labels)
         result = []
-        prev_label = labels[0]
+        prev_label = None
         blank_index = 0
-        result.append(prev_label)
-        for i in range(1, N):
-            if prev_label != labels[i] and prev_label != blank_index:
+        for i in range(N):
+            if labels[i] == blank_index:
+                continue
+
+            if prev_label is None:
+                prev_label = labels[i]
+                result.append(prev_label)
+
+            if prev_label != labels[i]:
                 result.append(labels[i])
                 prev_label = labels[i]
 
