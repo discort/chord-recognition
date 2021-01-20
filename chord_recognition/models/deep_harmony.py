@@ -10,7 +10,7 @@ from chord_recognition.models.deep_auditory import DeepAuditoryV2
 
 def deep_harmony(
         **kwargs: Any):
-    return DeepHarmony(num_classes=26, bidirectional=True, **kwargs)
+    return DeepHarmony(rnn_type=nn.LSTM, num_classes=26, bidirectional=True, **kwargs)
 
 
 # Taken from  https://github.com/SeanNaren/deepspeech.pytorch with modifications
@@ -60,6 +60,7 @@ class BatchRNN(nn.Module):
 
 class DeepHarmony(nn.Module):
     def __init__(self,
+                 rnn_type: nn.RNNBase,
                  num_classes: int = 26,
                  n_rnn_layers: int = 5,
                  rnn_dim: int = 128,
@@ -71,12 +72,14 @@ class DeepHarmony(nn.Module):
         # Add RNN layer w/o batch_norm because CNN alreavy has one
         rnn = BatchRNN(input_size=rnn_dim,
                        hidden_size=rnn_dim,
+                       rnn_type=rnn_type,
                        bidirectional=bidirectional,
                        batch_norm=False)
         rnns.append(('0', rnn))
         for x in range(n_rnn_layers - 1):
             rnn = BatchRNN(input_size=rnn_dim,
                            hidden_size=rnn_dim,
+                           rnn_type=rnn_type,
                            bidirectional=bidirectional)
             rnns.append(('%d' % (x + 1), rnn))
         self.rnn_layers = nn.Sequential(OrderedDict(rnns))

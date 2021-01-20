@@ -150,6 +150,9 @@ class DeepAuditoryV2(nn.Module):
         self.dropout = nn.Dropout(p=0.5)
 
     def forward(self, x: Tensor) -> Tensor:
+        """
+        C - num_classes
+        """
         # N x 1 x 105 x 15
         x = self.Conv2d_1a_3x3(x)
         # N x 32 x 105 x 15
@@ -170,14 +173,13 @@ class DeepAuditoryV2(nn.Module):
         x = self.Conv2d_5a_12x9(x)
         # N x 128 × 13 × 3
         if self.use_gap:
-            # N x 128 × 13 × 3
             x = self.dropout(x)
             # N x 128 × 13 × 3
             x = self.Conv2d_6a_1x1_linear(x)
 
-        # (N x 128 × 13 × 3) or (N x 25 × 13 × 3) if use_gap
+        # (N x 128 × 13 × 3) or (N x C × 13 × 3) if use_gap
         x = self.avg_pool(x)
-        # (N x 128 × 1 × 1) or (N x 25 x 1 x 1) if use_gap
+        # (N x 128 × 1 × 1) or (N x C x 1 x 1) if use_gap
         x = x.squeeze(3).squeeze(2)
-        # (N x 128) or (N x 25) if use_gap
+        # (N x 128) or (N x C) if use_gap
         return x
