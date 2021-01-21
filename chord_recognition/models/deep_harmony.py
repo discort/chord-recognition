@@ -111,10 +111,10 @@ class DeepHarmony(nn.Module):
         x = torch.stack([self.cnn_layers(x[i].view(N, 1, F_in, S)) for i in range(T)])
         # T x N x F
         # x = self.rnn_layers(x)
-        states = [LSTMState(torch.randn(N, self.rnn_dim),
-                            torch.randn(N, self.rnn_dim))
+        states = [LSTMState(torch.zeros(N, self.rnn_dim, dtype=x.dtype, device=x.device),
+                            torch.zeros(N, self.rnn_dim, dtype=x.dtype, device=x.device))
                   for _ in range(self.n_rnn_layers)]
-        x, states = self.rnn_layers(x, states)
+        x, _ = self.rnn_layers(x, states)
         # T x N x rnn_dim
         x = self.fc(x)
         # T x N x C
