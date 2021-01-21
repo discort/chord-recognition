@@ -7,6 +7,8 @@ import torch.nn.functional as F
 from torch import Tensor
 from chord_recognition.models.deep_auditory import DeepAuditoryV2
 
+from .layers import script_lnlstm, LSTMState
+
 
 def deep_harmony(**kwargs: Any):
     return DeepHarmony(**kwargs)
@@ -66,21 +68,27 @@ class DeepHarmony(nn.Module):
         super(DeepHarmony, self).__init__()
         self.num_classes = num_classes
         self.cnn_layers = DeepAuditoryV2(num_classes=num_classes)
-        rnns = []
+        self.rnn_dim = rnn_dim
+        self.n_rnn_layers = n_rnn_layers
+        # rnns = []
         # Add RNN layer w/o batch_norm because CNN alreavy has one
-        rnn = BatchRNN(input_size=rnn_dim,
-                       hidden_size=rnn_dim,
-                       rnn_type=rnn_type,
-                       bidirectional=bidirectional,
-                       batch_norm=True)
-        rnns.append(('0', rnn))
-        for x in range(n_rnn_layers - 1):
-            rnn = BatchRNN(input_size=rnn_dim,
-                           hidden_size=rnn_dim,
-                           rnn_type=rnn_type,
-                           bidirectional=bidirectional)
-            rnns.append(('%d' % (x + 1), rnn))
-        self.rnn_layers = nn.Sequential(OrderedDict(rnns))
+        # rnn = BatchRNN(input_size=rnn_dim,
+        #                hidden_size=rnn_dim,
+        #                rnn_type=rnn_type,
+        #                bidirectional=bidirectional,
+        #                batch_norm=True)
+        # rnns.append(('0', rnn))
+        # for x in range(n_rnn_layers - 1):
+        #     rnn = BatchRNN(input_size=rnn_dim,
+        #                    hidden_size=rnn_dim,
+        #                    rnn_type=rnn_type,
+        #                    bidirectional=bidirectional)
+        #     rnns.append(('%d' % (x + 1), rnn))
+        # self.rnn_layers = nn.Sequential(OrderedDict(rnns))
+        self.rnn_layers = script_lnlstm(input_size=rnn_dim,
+                                        hidden_size=rnn_dim,
+                                        num_layers=n_rnn_layers,
+                                        bidirectional=False)
         fully_connected = nn.Sequential(
             nn.BatchNorm1d(rnn_dim),
             nn.Linear(rnn_dim, self.num_classes, bias=False)
@@ -98,11 +106,15 @@ class DeepHarmony(nn.Module):
         """
         N, T, F_in, S = x.shape
         # N x T x F_in x S
-        x = x.transpose(0, 1)
+        x = x.transpose(0, 1).contiguous()
         # T x N x F_in x S
         x = torch.stack([self.cnn_layers(x[i].view(N, 1, F_in, S)) for i in range(T)])
         # T x N x F
-        x = self.rnn_layers(x)
+        # x = self.rnn_layers(x)
+        states = [LSTMState(torch.randn(N, self.rnn_dim),
+                            torch.randn(N, self.rnn_dim))
+                  for _ in range(self.n_rnn_layers)]
+        x, states = self.rnn_layers(x, states)
         # T x N x rnn_dim
         x = self.fc(x)
         # T x N x C
