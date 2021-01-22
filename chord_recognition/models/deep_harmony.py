@@ -64,11 +64,13 @@ class DeepHarmony(nn.Module):
                  num_classes: int = 26,
                  n_rnn_layers: int = 5,
                  rnn_dim: int = 128,
+                 rnn_hidden_size: int = 128,
                  bidirectional: bool = True) -> None:
         super(DeepHarmony, self).__init__()
         self.num_classes = num_classes
         self.cnn_layers = DeepAuditoryV2(num_classes=num_classes)
         self.rnn_dim = rnn_dim
+        self.rnn_hidden_size = rnn_hidden_size
         self.n_rnn_layers = n_rnn_layers
         # rnns = []
         # Add RNN layer w/o batch_norm because CNN alreavy has one
@@ -86,12 +88,12 @@ class DeepHarmony(nn.Module):
         #     rnns.append(('%d' % (x + 1), rnn))
         # self.rnn_layers = nn.Sequential(OrderedDict(rnns))
         self.rnn_layers = script_lnlstm(input_size=rnn_dim,
-                                        hidden_size=rnn_dim,
+                                        hidden_size=rnn_hidden_size,
                                         num_layers=n_rnn_layers,
                                         bidirectional=False)
         fully_connected = nn.Sequential(
-            nn.BatchNorm1d(rnn_dim),
-            nn.Linear(rnn_dim, self.num_classes, bias=False)
+            nn.BatchNorm1d(rnn_hidden_size),
+            nn.Linear(rnn_hidden_size, self.num_classes, bias=False)
         )
         self.fc = nn.Sequential(SequenceWise(fully_connected))
 
@@ -111,11 +113,11 @@ class DeepHarmony(nn.Module):
         x = torch.stack([self.cnn_layers(x[i].view(N, 1, F_in, S)) for i in range(T)])
         # T x N x F
         # x = self.rnn_layers(x)
-        states = [LSTMState(torch.zeros(N, self.rnn_dim, dtype=x.dtype, device=x.device),
-                            torch.zeros(N, self.rnn_dim, dtype=x.dtype, device=x.device))
+        states = [LSTMState(torch.zeros(N, self.rnn_hidden_size, dtype=x.dtype, device=x.device),
+                            torch.zeros(N, self.rnn_hidden_size, dtype=x.dtype, device=x.device))
                   for _ in range(self.n_rnn_layers)]
         x, _ = self.rnn_layers(x, states)
-        # T x N x rnn_dim
+        # T x N x rnn_hidden_size
         x = self.fc(x)
         # T x N x C
         x = F.log_softmax(x, dim=2)
