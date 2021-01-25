@@ -125,7 +125,8 @@ class ResChroma(nn.Module):
             ResidualCNN(32, 32, kernel=3, stride=1, dropout=dropout, n_feats=n_feats)
             for _ in range(n_cnn_layers)
         ])
-        self.fully_connected = nn.Linear(n_feats * 32, rnn_dim)
+        self.batch_norm = nn.BatchNorm1d(n_feats * 32)
+        self.fully_connected = nn.Linear(n_feats * 32, rnn_dim, bias=False)
 
     def forward(self, x: Tensor) -> Tensor:
         """
@@ -140,6 +141,8 @@ class ResChroma(nn.Module):
         # N x 32 x F x T
         sizes = x.size()
         x = x.view(sizes[0], sizes[1] * sizes[2], sizes[3])
+        # N x F x T
+        x = self.batch_norm(x)
         # N x F x T
         x = x.transpose(1, 2)  # (batch, time, feature)
         # N x T x F
