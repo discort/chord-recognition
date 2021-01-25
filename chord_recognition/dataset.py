@@ -5,6 +5,8 @@ import random
 import librosa
 from imblearn.datasets import make_imbalance
 import numpy as np
+import torch
+import torch.nn as nn
 from torch.utils.data import Dataset, WeightedRandomSampler
 
 from .ann_utils import convert_chord_ann_matrix, get_chord_labels
@@ -99,50 +101,35 @@ def collect_files(dir_path, ext='.lab', excluded_files=(), allowed_files=()):
     return files
 
 
-class ChromaDataset:
+class SpecDataset:
     def __init__(
-            self, datasource,
+            self,
+            datasource,
             window_size=4096,
             hop_length=4410,
-            context_size=7,
-            cache=None,
-            transform=None):
+            cache=None):
         """
         Args:
-            datasource: list of tuples - label:source file path notation
+            datasource: list[tuple] - label:source file path location
             window_size (int)
             hop_length (int)
-            context_size (int)
-            context_y (bool) - Indicate whether or not pad y by a context
-                defined by `context_size`
-            frame_hadler (ann_utils.Target)
             cache: cache.Cache obj - use cached data
-            transform (callable): Optional transform to be applied
-                on a sample.
         """
         self.datasource = datasource
         self.window_size = window_size
         self.hop_length = hop_length
         self.chord_labels = get_chord_labels(ext_minor='m', nonchord=True)
         self.num_classes = len(self.chord_labels)
-        self._frames = []
-        self.context_size = context_size
+        self._data = []
         self.cache = cache
-        self.transform = transform
         self._init_dataset()
 
     def __len__(self):
-        return len(self._frames)
+        return len(self._data)
 
     def __getitem__(self, idx):
-        if isinstance(idx, (int, np.int64)):
-            inputs, targets = self._frames[idx]
-            if self.transform:
-                inputs = self.transform(inputs)
-            return inputs, targets
-        elif isinstance(idx, np.ndarray):
-            frames = np.array(self._frames)[idx]
-            return [(f[0], f[1]) for f in frames]
+        inputs, targets = self._data[idx]
+        return inputs, targets
 
     def _init_dataset(self):
         """
@@ -151,33 +138,7 @@ class ChromaDataset:
         """
         for ann_path, audio_path in self.datasource:
             sample = self._make_sample(ann_path, audio_path)
-            if self.context_size is None:
-                frame_data = [sample]
-            else:
-                frame_data = self._make_frames(sample)
-            self._frames.extend(frame_data)
-
-    def _make_frames(self, sample):
-        spec, ann_matrix = sample
-        result = []
-
-        if self.context_size:
-            container = split_with_context(spec, self.context_size)
-        else:
-            # default container w/o context
-            container = (spec[:, i] for i in range(spec.shape[1]))
-
-        # Initialize input/target pairs
-        for idx, frame in enumerate(container):
-            label = ann_matrix[:, idx]
-            # Exclude only unlabeled data
-            if not label.any():
-                continue
-
-            if self.transform:
-                frame = self.transform(frame)
-            result.append((frame.reshape(1, *frame.shape), np.argmax(label)))
-        return result
+            self._data.append(sample)
 
     def _cached(func):
         def wrapped(self, *args):
@@ -220,32 +181,107 @@ class ChromaDataset:
         return spec, ann_matrix
 
 
-class StackedFrameDataset(ChromaDataset):
-    def __init__(self, seq_length=20, target_length=8, *args, **kwargs):
+class FrameDataset:
+    def __init__(
+            self,
+            dataset,
+            context_size=7,
+            transform=None):
         """
         Args:
-            seq_length (int) - sequence length in frames
-            target_length (int) - max target length
+            context_size (int)
+            transform (callable): Optional transform to be applied
+                on a sample.
         """
-        self.seq_length = seq_length
-        self.target_length = target_length
-        super(StackedFrameDataset, self).__init__(*args, **kwargs)
+        self.dataset = dataset
+        self._frames = []
+        self.context_size = context_size
+        self.transform = transform
+        self._init_dataset()
+
+    def __len__(self):
+        return len(self._frames)
+
+    def __getitem__(self, idx):
+        if isinstance(idx, (int, np.int64)):
+            inputs, labels = self._frames[idx]
+            if self.transform:
+                inputs = self.transform(inputs)
+            return inputs, labels
+        elif isinstance(idx, np.ndarray):
+            frames = np.array(self._frames)[idx]
+            return [(f[0], f[1]) for f in frames]
+
+    def _init_dataset(self):
+        """
+        Initialise (sample, label) for all frames.
+        Use cache if available.
+        """
+        for sample in self.dataset:
+            frame_data = self._make_frames(sample)
+            self._frames.extend(frame_data)
 
     def _make_frames(self, sample):
         spec, ann_matrix = sample
         result = []
 
-        frames = stack_frames(split_with_context(spec, self.context_size), self.seq_length)
-        targets = np.argmax(ann_matrix, 0)
-        targets = stack_frames(targets, self.seq_length)
+        container = split_with_context(spec, self.context_size)
+
         # Initialize input/target pairs
-        for sframe, labels in zip(frames, targets):
-            # Exclude blank labeled data
-            if not labels.any():
+        for idx, frame in enumerate(container):
+            label = ann_matrix[:, idx]
+            # Exclude only unlabeled data
+            if not label.any():
                 continue
 
-            labels = self._cleanup_labels(labels)
-            result.append((sframe, labels))
+            if self.transform:
+                frame = self.transform(frame)
+            result.append((frame.reshape(1, *frame.shape), np.argmax(label)))
+        return result
+
+
+class SequenceFrameDataset(FrameDataset):
+    def __init__(
+            self,
+            dataset,
+            context_size=7,
+            seq_length=20,
+            target_length=8,
+            transform=None):
+        """
+        Args:
+            seq_length (int) - sequence length in frames
+            target_length (int) - max target length
+        """
+        self.dataset = dataset
+        self.seq_length = seq_length
+        self.target_length = target_length
+        self.context_size = context_size
+        self._frames = []
+        self.transform = transform
+        self._init_dataset()
+
+    def _init_dataset(self):
+        for sample in self.dataset:
+            frame_data = self._make_frames(sample)
+            self._frames.extend(frame_data)
+
+    def _make_frames(self, sample):
+        spec, ann_matrix = sample
+        result = []
+
+        #frames = stack_frames(split_with_context(spec, self.context_size), self.seq_length)
+        spec_frames = stack_frames(spec.T, self.seq_length, last=True)
+        label_frames = np.argmax(ann_matrix, 0)
+        label_frames = stack_frames(label_frames, self.seq_length, last=True)
+        # Initialize input/target pairs
+        for spec_frame, label_frame in zip(spec_frames, label_frames):
+            # Exclude blank labeled data
+            if not label_frame.any():
+                continue
+
+            label_frame = self._cleanup_labels(label_frame)
+            result.append((spec_frame, label_frame))
         return result
 
     def _cleanup_labels(self, labels):
@@ -269,7 +305,7 @@ class StackedFrameDataset(ChromaDataset):
                 prev_label = labels[i]
 
         result = np.array(result)
-        offset = self.target_length - len(result)
-        result = np.pad(result, pad_width=(0, offset), mode='constant', constant_values=0)
+        # offset = self.target_length - len(result)
+        #result = np.pad(result, pad_width=(0, offset), mode='constant', constant_values=0)
         # Make targets shorter than inputs. Avoid infinite losses
         return result

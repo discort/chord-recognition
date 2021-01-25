@@ -4,10 +4,15 @@ import torch.nn as nn
 from torch.utils.data import BatchSampler, SequentialSampler, DataLoader
 
 from chord_recognition.ann_utils import convert_onehot_ann
-from chord_recognition.models import deep_auditory_v2
+from chord_recognition.models import deep_auditory_v2, deep_harmony
 from chord_recognition.models import postprocess_HMM
+from chord_recognition.transformations import Rescale, TRAIN_MEAN, TRAIN_STD
 from chord_recognition.utils import batch_exponential_smoothing,\
-    log_filtered_spectrogram, Rescale, split_with_context, read_audio, one_hot
+    log_filtered_spectrogram, split_with_context, read_audio, one_hot,\
+    stack_frames
+
+from .utils import ctc_greedy_decoder
+from .ann_utils import ChordModel
 
 
 DEFAULT_SAMPLE_RATE = 44100
@@ -64,7 +69,7 @@ class ChordRecognition:
         self.ext_minor = ext_minor
         self.num_classes = 25
         self.nonchord = nonchord
-        self.model = deep_auditory_v2(pretrained=True, model_name='deep_auditory_v2_exp4_3.pth')
+        self.model = deep_auditory_v2(pretrained=True, model_name='deep_auditory_v2_exp5.pth')
         self.model.eval()  # set model to evaluation mode
 
     def extract_features(self, audio_waveform, sr):
@@ -190,6 +195,74 @@ class ChordRecognition:
             sampler=sampler,
             batch_size=None)
         return dataloader
+
+
+class DeepChordRecognition(ChordRecognition):
+    def __init__(self, *args, **kwargs):
+        super(DeepChordRecognition, self).__init__(*args, **kwargs)
+        self.context_size = 7
+        self.seq_length = 100
+        self.target_length = 15
+        self.model = deep_harmony(pretrained=True,
+                                  num_classes=26,
+                                  n_rnn_layers=3,
+                                  bidirectional=False)
+        self.model.eval()  # set model to evaluation mode
+
+    def predict_labels(self, features):
+        """
+        Predict chord labels from a feature-matrix
+
+        Args:
+            features - (np.ndarray [shape=(num_features, N))
+
+        Returns:
+            logits - np.ndarray [shape=(N, num_classes)]
+        """
+        dataloader = self._prepare_dataloader(features)
+        result = self._forward(self.model, dataloader)
+        return result
+
+    def postprocess(self, logits):
+        return logits
+
+    @torch.no_grad()
+    def _forward(self, model, dataloader):
+        result = []
+        chord_model = ChordModel()
+        for inputs in dataloader:
+            out = model(inputs).data.numpy()
+            decoded_out = ctc_greedy_decoder(out)
+            T, N, C = out.shape
+            for n in range(N):
+                out_labels = chord_model.onehot_to_labels(decoded_out[n])
+                result.extend(out_labels)
+
+        return result
+
+    def _prepare_dataloader(self,
+                            spectrogram,
+                            transform=Rescale(TRAIN_MEAN, TRAIN_STD)):
+        frames = split_with_context(spectrogram, self.context_size)
+        frames = stack_frames(frames, self.seq_length, last=True)
+        frames = [transform(f) for f in frames]
+
+        dataloader = DataLoader(
+            dataset=frames,
+            batch_size=1)
+        return dataloader
+
+    def decode_chords(self, labels, sr):
+        """
+        Decodes labels from one-hot to human-readable format
+
+        Args:
+            labels - one-hot np.array [shape=(N, num_classes)]
+
+        Returns:
+            chords in [(start, end, label), ...] format
+        """
+        return labels
 
 
 def estimate_chords(audio_path,

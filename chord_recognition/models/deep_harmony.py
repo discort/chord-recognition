@@ -1,4 +1,5 @@
 from collections import OrderedDict
+import os
 from typing import Any
 
 import torch
@@ -9,8 +10,18 @@ from chord_recognition.models.deep_auditory import DeepAuditoryV2
 
 from .layers import script_lnlstm, LSTMState
 
+CURR_DIR = os.path.dirname(__file__)
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-def deep_harmony(**kwargs: Any):
+
+def deep_harmony(pretrained: bool = False, **kwargs: Any):
+    if pretrained:
+        model = DeepHarmony(**kwargs)
+        state_dict = torch.load(
+            os.path.join(CURR_DIR, 'deep_auditory_v2_exp6.pth'),
+            map_location=device)
+        model.load_state_dict(state_dict)
+        return model
     return DeepHarmony(**kwargs)
 
 
@@ -58,17 +69,103 @@ class BatchRNN(nn.Module):
         return x
 
 
+class CNNLayerNorm(nn.Module):
+    """Layer normalization built for cnns input"""
+
+    def __init__(self, n_feats):
+        super(CNNLayerNorm, self).__init__()
+        self.layer_norm = nn.LayerNorm(n_feats)
+
+    def forward(self, x):
+        # x (batch, channel, feature, time)
+        x = x.transpose(2, 3).contiguous()  # (batch, channel, time, feature)
+        x = self.layer_norm(x)
+        return x.transpose(2, 3).contiguous()  # (batch, channel, feature, time)
+
+
+class ResidualCNN(nn.Module):
+    """Residual CNN inspired by https://arxiv.org/pdf/1603.05027.pdf
+        except with layer norm instead of batch norm
+    """
+
+    def __init__(self, in_channels, out_channels, kernel, stride, dropout, n_feats):
+        super(ResidualCNN, self).__init__()
+
+        self.cnn1 = nn.Conv2d(in_channels, out_channels, kernel, stride, padding=kernel//2)
+        self.cnn2 = nn.Conv2d(out_channels, out_channels, kernel, stride, padding=kernel//2)
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
+        self.layer_norm1 = CNNLayerNorm(n_feats)
+        self.layer_norm2 = CNNLayerNorm(n_feats)
+
+    def forward(self, x):
+        residual = x  # (batch, channel, feature, time)
+        x = self.layer_norm1(x)
+        x = F.gelu(x)
+        x = self.dropout1(x)
+        x = self.cnn1(x)
+        x = self.layer_norm2(x)
+        x = F.gelu(x)
+        x = self.dropout2(x)
+        x = self.cnn2(x)
+        x += residual
+        return x  # (batch, channel, feature, time)
+
+
+class ResChroma(nn.Module):
+    def __init__(self,
+                 n_feats: int,
+                 n_cnn_layers: int = 3,
+                 rnn_dim: int = 128,
+                 dropout: float = 0.1) -> None:
+        super(ResChroma, self).__init__()
+        n_feats = n_feats // 2 + 1
+        self.cnn = nn.Conv2d(1, 32, 3, stride=2, padding=1)
+        self.cnn_layers = nn.Sequential(*[
+            ResidualCNN(32, 32, kernel=3, stride=1, dropout=dropout, n_feats=n_feats)
+            for _ in range(n_cnn_layers)
+        ])
+        self.fully_connected = nn.Linear(n_feats * 32, rnn_dim)
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        N - batch size
+        F - features
+        T - time
+        """
+        # N x 1 x F x T
+        x = self.cnn(x)
+        # N x 32 x F x T
+        x = self.cnn_layers(x)
+        # N x 32 x F x T
+        sizes = x.size()
+        x = x.view(sizes[0], sizes[1] * sizes[2], sizes[3])
+        # N x F x T
+        x = x.transpose(1, 2)  # (batch, time, feature)
+        # N x T x F
+        x = self.fully_connected(x)
+        # N x T x F
+        x = x.transpose(0, 1)
+        # T x N x F
+        return x
+
+
 class DeepHarmony(nn.Module):
     def __init__(self,
+                 n_feats: int,
                  rnn_type: nn.RNNBase = nn.LSTM,
                  num_classes: int = 26,
+                 n_cnn_layers: int = 3,
                  n_rnn_layers: int = 5,
                  rnn_dim: int = 128,
                  rnn_hidden_size: int = 128,
                  bidirectional: bool = True) -> None:
         super(DeepHarmony, self).__init__()
         self.num_classes = num_classes
-        self.cnn_layers = DeepAuditoryV2(num_classes=num_classes)
+        # #self.cnn_layers = DeepAuditoryV2(num_classes=num_classes)
+        self.cnn = ResChroma(n_feats=n_feats,
+                             n_cnn_layers=n_cnn_layers,
+                             rnn_dim=rnn_dim)
         self.rnn_dim = rnn_dim
         self.rnn_hidden_size = rnn_hidden_size
         self.n_rnn_layers = n_rnn_layers
@@ -99,27 +196,19 @@ class DeepHarmony(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         """
-        N - batch size
-        T - amount of stacked frames
-        F_in - input features
-        F - produced features
-        S - frame size
+        x - has shape [batch_size x channel x n_feats x input_length)
+            (N x 1 x F x T)
         C - number of classes
         """
-        N, T, F_in, S = x.shape
-        # N x T x F_in x S
-        x = x.transpose(0, 1).contiguous()
-        # T x N x F_in x S
-        x = torch.stack([self.cnn_layers(x[i].view(N, 1, F_in, S)) for i in range(T)])
+        N, _, _, _ = x.shape
+        # N x 1 x F x T
+        x = self.cnn(x)
         # T x N x F
-        # x = self.rnn_layers(x)
         states = [LSTMState(torch.zeros(N, self.rnn_hidden_size, dtype=x.dtype, device=x.device),
                             torch.zeros(N, self.rnn_hidden_size, dtype=x.dtype, device=x.device))
                   for _ in range(self.n_rnn_layers)]
         x, _ = self.rnn_layers(x, states)
         # T x N x rnn_hidden_size
         x = self.fc(x)
-        # T x N x C
-        x = F.log_softmax(x, dim=2)
         # T x N x C
         return x

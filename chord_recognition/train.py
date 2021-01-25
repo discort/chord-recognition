@@ -4,6 +4,7 @@ from livelossplot import PlotLosses
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import WeightedRandomSampler
 
 from .ann_utils import ChordModel
@@ -36,6 +37,22 @@ def get_weighted_random_sampler(labels, labels_train):
         num_samples=len(train_sampling_weights),
         replacement=True)
     return sampler
+
+
+def data_processing(data):
+    inputs = []
+    labels = []
+    input_lengths = []
+    label_lengths = []
+    for batch in data:
+        inputs_b, labels_b = batch
+        inputs.append(torch.from_numpy(inputs_b))
+        labels.append(torch.from_numpy(labels_b))
+        input_lengths.append(len(inputs_b) // 2)
+        label_lengths.append(len(labels_b))
+    inputs = nn.utils.rnn.pad_sequence(inputs, batch_first=True).unsqueeze(1).transpose(2, 3)
+    labels = nn.utils.rnn.pad_sequence(labels, batch_first=True)
+    return inputs, labels, input_lengths, label_lengths
 
 
 class Solver:
@@ -97,7 +114,8 @@ class Solver:
         running_loss = 0.0
         running_wer = []
 
-        for inputs, labels in self.dataloaders[phase]:
+        for data in self.dataloaders[phase]:
+            inputs, labels, input_lengths, label_lengths = data
             inputs = inputs.to(device=self.device, dtype=torch.float32)
             labels = labels.to(device=self.device, dtype=torch.long)
             if phase == 'train':
@@ -106,19 +124,15 @@ class Solver:
                 self.optimizer.zero_grad()
 
             out = self.model(inputs)
+            out = F.log_softmax(out, dim=2)
 
-            T, N, C = out.shape
-            input_lengths = torch.full(size=(N,), fill_value=T, dtype=torch.long, device=self.device)
-            # Un-pad labels by removing blank labels
-            nonblank_labels = labels > 0
-            labels_lengths = (nonblank_labels).sum(dim=1)
-            loss = self.criterion(out, labels[nonblank_labels], input_lengths, labels_lengths)
+            loss = self.criterion(out, labels, input_lengths, label_lengths)
 
-            decoded_out = ctc_greedy_decoder(out.cpu().detach().numpy(), labels_lengths)
-            targets = labels.cpu().detach().numpy()
-            targets = [targets[n][targets[n] > 0] for n in range(N)]
+            decoded_out = ctc_greedy_decoder(out.cpu().detach().numpy())
+            labels = labels.cpu().detach().numpy()
+            _, N, _ = out.shape
             for n in range(N):
-                target_labels = self.chord_model.onehot_to_labels(targets[n])
+                target_labels = self.chord_model.onehot_to_labels(labels[n][:label_lengths[n]])
                 out_labels = self.chord_model.onehot_to_labels(decoded_out[n])
                 wer = compute_wer(target_labels, out_labels)
                 running_wer.append(wer)

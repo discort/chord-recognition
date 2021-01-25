@@ -172,8 +172,8 @@ class DeepAuditoryV2(nn.Module):
         # N x 64 × 24 × 11
         x = self.Conv2d_5a_12x9(x)
         # N x 128 × 13 × 3
+        x = self.dropout(x)
         if self.use_gap:
-            x = self.dropout(x)
             # N x 128 × 13 × 3
             x = self.Conv2d_6a_1x1_linear(x)
 

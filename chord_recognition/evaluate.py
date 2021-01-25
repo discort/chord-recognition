@@ -8,8 +8,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from chord_recognition.cache import HDF5Cache
-from chord_recognition.dataset import prepare_datasource, ChromaDataset, collect_files
-from chord_recognition.predict import ChordRecognition
+from chord_recognition.dataset import prepare_datasource, SpecDataset, collect_files
+from chord_recognition.predict import ChordRecognition, DeepChordRecognition
 
 
 def compute_cer(reference, hypothesis, ignore_case=False, remove_space=False):
@@ -283,12 +283,11 @@ def save_annotations(annotations, file_path):
 
 
 def evaluate_dataset(dataset, save_ann=False, result_dir='results'):
-    total_R = total_P = total_F = 0.0
-    total_count = 0
-    estimator = ChordRecognition(
+    estimator = DeepChordRecognition(
         window_size=dataset.window_size,
         hop_length=dataset.hop_length,
         ext_minor=':min',
+        postprocessing=None,
         nonchord=True)
 
     for i in range(len(dataset)):
@@ -300,30 +299,12 @@ def evaluate_dataset(dataset, save_ann=False, result_dir='results'):
         out = estimator.predict_labels(spec)
         out = estimator.postprocess(out)
 
-        P, R, F1, TP, FP, FN = compute_eval_measures(ann_matrix, out.T)
-        title = (f'Eval: <{sample_name}> N={out.shape[0]} TP={TP} FP={FP} FN={FN}'
-                 f' P={P:.3f} R={R:.3f} F1={F1:.3f}')
-        print(title)
-
+        print(f'Eval: <{sample_name}>')
         if save_ann:
             result_path = '/'.join(ann_path.split('/')[-4:]).replace('/chordlabs', '')
             result_path = os.path.join(result_dir, result_path)
             result_ann = estimator.decode_chords(out, 44100)
-            # result_ann = convert_onehot_ann(
-            #     out, dataset.hop_length, 44100, ext_minor=':min', nonchord=True)
             save_annotations(result_ann, result_path)
-
-        total_count += 1
-        total_R += R
-        total_P += P
-        total_F += F1
-
-    total_R /= total_count
-    total_P /= total_count
-    total_F /= total_count
-    print(f'Total R: {total_R}')
-    print(f'Total P: {total_P}')
-    print(f'Total F: {total_F}')
 
 
 def print_ds_compute_average_scores(ds_name):
@@ -357,12 +338,11 @@ def main():
     for ds_name in ds_names:
         print(f"Evaluating {ds_name} ...")
         datasource = prepare_datasource((ds_name,))
-        dataset = ChromaDataset(
+        dataset = SpecDataset(
             datasource=datasource,
             window_size=8192,
             hop_length=4410,
-            context_size=None,
-            cache=HDF5Cache('chroma_cache.hdf5'))
+            cache=HDF5Cache('spectrogram_ann_cache.hdf5'))
         evaluate_dataset(
             dataset=dataset,
             save_ann=True)
