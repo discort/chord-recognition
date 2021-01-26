@@ -270,10 +270,11 @@ class SequenceFrameDataset(FrameDataset):
         spec, ann_matrix = sample
         result = []
 
-        #frames = stack_frames(split_with_context(spec, self.context_size), self.seq_length)
-        spec_frames = stack_frames(spec.T, self.seq_length, last=True)
+        # Exclude short input lengths to avoid negative log likelihood (that is ctc loss is)
+        # https://discuss.pytorch.org/t/ctc-loss-with-variable-input-lengths-produces-nan-values/43476/5
+        spec_frames = stack_frames(spec.T, self.seq_length, last=False)
         label_frames = np.argmax(ann_matrix, 0)
-        label_frames = stack_frames(label_frames, self.seq_length, last=True)
+        label_frames = stack_frames(label_frames, self.seq_length, last=False)
         # Initialize input/target pairs
         for spec_frame, label_frame in zip(spec_frames, label_frames):
             # Exclude blank labeled data
