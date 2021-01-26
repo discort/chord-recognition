@@ -128,14 +128,15 @@ class Solver:
 
             loss = self.criterion(out, labels, input_lengths, label_lengths)
 
-            decoded_out = ctc_greedy_decoder(out.cpu().detach().numpy())
-            labels = labels.cpu().detach().numpy()
-            _, N, _ = out.shape
-            for n in range(N):
-                target_labels = self.chord_model.onehot_to_labels(labels[n][:label_lengths[n]])
-                out_labels = self.chord_model.onehot_to_labels(decoded_out[n])
-                wer = compute_wer(target_labels, out_labels)
-                running_wer.append(wer)
+            with torch.no_grad():
+                decoded_out = ctc_greedy_decoder(out.cpu().numpy())
+                labels = labels.cpu().numpy()
+                _, N, _ = out.shape
+                for n in range(N):
+                    target_labels = self.chord_model.onehot_to_labels(labels[n][:label_lengths[n]])
+                    out_labels = self.chord_model.onehot_to_labels(decoded_out[n])
+                    wer = compute_wer(target_labels, out_labels)
+                    running_wer.append(wer)
 
             if phase == 'train':
                 # This is the backwards pass: compute the gradient of the loss with
