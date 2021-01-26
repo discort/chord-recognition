@@ -14,6 +14,25 @@ from .utils import ctc_greedy_decoder
 MODELS_DIR = os.path.join(os.path.dirname(__file__), 'models')
 
 
+def check_loss(loss, loss_value):
+    """
+    Check that warp-ctc loss is valid and will not break training
+    :return: Return if loss is valid, and the error in case it is not
+    """
+    loss_valid = True
+    error = ''
+    if loss_value == float("inf") or loss_value == float("-inf"):
+        loss_valid = False
+        error = "WARNING: received an inf loss"
+    elif torch.isnan(loss).sum() > 0:
+        loss_valid = False
+        error = 'WARNING: received a nan loss, setting loss value to 0'
+    elif loss_value < 0:
+        loss_valid = False
+        error = "WARNING: received a negative loss"
+    return loss_valid, error
+
+
 def get_weighted_random_sampler(labels, labels_train):
     """
     Make a sample to work with unbalanced dataset.
@@ -127,10 +146,11 @@ class Solver:
             out = F.log_softmax(out, dim=2)
 
             loss = self.criterion(out, labels, input_lengths, label_lengths)
+            loss_value = loss.detach() * inputs.size(0)
 
             with torch.no_grad():
-                decoded_out = ctc_greedy_decoder(out.cpu().numpy())
-                labels = labels.cpu().numpy()
+                decoded_out = ctc_greedy_decoder(out.cpu().detach().numpy())
+                labels = labels.cpu().detach().numpy()
                 _, N, _ = out.shape
                 for n in range(N):
                     target_labels = self.chord_model.onehot_to_labels(labels[n][:label_lengths[n]])
@@ -139,17 +159,23 @@ class Solver:
                     running_wer.append(wer)
 
             if phase == 'train':
-                # This is the backwards pass: compute the gradient of the loss with
-                # respect to each  parameter of the model.
-                loss.backward()
+                # Check to ensure valid loss was calculated
+                valid_loss, error = check_loss(loss, loss_value)
+                if valid_loss:
+                    # This is the backwards pass: compute the gradient of the loss with
+                    # respect to each  parameter of the model.
+                    loss.backward()
+                    # Actually update the parameters of the model using the gradients
+                    # computed by the backwards pass.
+                    self.optimizer.step()
+                    if self.scheduler:
+                        self.scheduler.step()
+                else:
+                    print(error)
+                    print('Skipping grad update')
+                    loss_value = 0
 
-                # Actually update the parameters of the model using the gradients
-                # computed by the backwards pass.
-                self.optimizer.step()
-                if self.scheduler:
-                    self.scheduler.step()
-
-            running_loss += loss.detach() * inputs.size(0)
+            running_loss += loss_value
 
         avg_wer = sum(running_wer) / len(running_wer)
         return running_loss, avg_wer
