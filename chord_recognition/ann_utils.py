@@ -294,9 +294,9 @@ class ChordModel:
     S - max length of sequence
     """
 
-    def __init__(self):
-        self.labels = get_chord_labels(nonchord=True)
-        self.idx_labels_map = {idx: l for idx, l in enumerate(['-'] + self.labels)}
+    def __init__(self, ext_minor='m'):
+        self.labels = get_chord_labels(ext_minor=ext_minor, nonchord=True)
+        self.idx_labels_map = {idx: l for idx, l in enumerate(['N'] + self.labels)}
 
     def idx_to_label(self, idx):
         return self.idx_labels_map[idx]

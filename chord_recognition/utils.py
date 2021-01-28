@@ -1,3 +1,4 @@
+import itertools
 import warnings
 
 import librosa
@@ -85,21 +86,48 @@ def split_with_context(x, context_size, pad_data=None):
         yield window.astype(dtype)
 
 
-def stack_frames(sequence, n_frames, last=False):
+def expand_labels(inputs, blank_label=0):
     """
-    Stack items from a sequence into frames by `n_frames` size
+    Expand given list of labels into sequence seized by seq_len
+
+    Ex.
+    >> inputs
+    >> [(100, [25]),
+        (100, []),
+        (100, [10, 1]),
+        (43, [25])]
+
+    Args:
+        inputs [(seq_len, [list_of_labels])]
     """
+    result = []
+    for i, (seq_len, labels) in enumerate(inputs):
+        label_rate = 1. / len(labels) if len(labels) > 0 else 0
+        labels_stack = []
+        for item in labels:
+            elems = itertools.repeat(item, int(seq_len * label_rate))
+            labels_stack.extend(list(elems))
+
+        # Handle blank labels list
+        if not labels_stack:
+            labels_stack = list(itertools.repeat(blank_label, seq_len))
+
+        result.extend(labels_stack)
+    return result
+
+
+def batch_sequence(sequence, batch_size, last=False):
+    result = []
     stack = []
-    stack_i = []
     for item in sequence:
-        if len(stack_i) < n_frames:
-            stack_i.append(item)
-        elif len(stack_i) == n_frames:
-            stack.append(np.stack(stack_i))
-            stack_i = []
-    if last and len(stack_i) > 0:
-        stack.append(np.stack(stack_i))
-    return stack
+        if len(stack) < batch_size:
+            stack.append(item)
+        if len(stack) == batch_size:
+            result.append(np.stack(stack))
+            stack = []
+    if last and len(stack) > 0:
+        result.append(np.stack(stack))
+    return result
 
 
 def read_csv(fn, header=False, add_label=False, sep=' '):

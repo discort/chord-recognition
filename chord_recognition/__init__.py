@@ -1,1 +1,1 @@
-from .predict import estimate_chords
+from .audio import estimate_chords

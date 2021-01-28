@@ -2,11 +2,13 @@ from collections import OrderedDict
 import os
 from typing import Any
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 from chord_recognition.models.deep_auditory import DeepAuditoryV2
+from chord_recognition.utils import ctc_greedy_decoder, expand_labels
 
 from .layers import script_lnlstm, LSTMState
 
@@ -172,6 +174,7 @@ class DeepHarmony(nn.Module):
         self.rnn_dim = rnn_dim
         self.rnn_hidden_size = rnn_hidden_size
         self.n_rnn_layers = n_rnn_layers
+        self.decoder = ctc_greedy_decoder
         # rnns = []
         # Add RNN layer w/o batch_norm because CNN alreavy has one
         # rnn = BatchRNN(input_size=rnn_dim,
@@ -215,3 +218,42 @@ class DeepHarmony(nn.Module):
         x = self.fc(x)
         # T x N x C
         return x
+
+    @torch.no_grad()
+    def predict(self, dataloader):
+        """
+        Pass input data through the model sequentually
+
+        Args:
+            dataloader (torch.DataLoader) - input data
+
+        Returns:
+            result - [(input_size, out_labels)]
+        """
+        pred_labels = []  # (seq_len, [batch_labels])
+        for inputs in dataloader:
+            # Convert to (batch, channel, features, time)
+            inputs = inputs.unsqueeze(1).transpose(2, 3)
+            out = self.forward(inputs).data.numpy()  # T x N x C
+            decoded_out = self.decoder(out)
+
+            for batch in decoded_out:
+                pred_labels.append((inputs.shape[-1], batch))
+
+        result = self._match_labels_frames(pred_labels)
+        return result
+
+    @staticmethod
+    def _match_labels_frames(pred_labels):
+        """
+        Match predicted labels to initial input provided by the number of frames
+
+        Args:
+            pred_labels ([tuple]) - predicted labels in format (seq_len, out_labels)
+
+        Returns:
+            np.array - result with labels matched initial input
+        """
+        result = expand_labels(pred_labels)
+        result = np.array(result, dtype=np.int32)
+        return result

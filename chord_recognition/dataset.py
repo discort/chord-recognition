@@ -9,8 +9,9 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, WeightedRandomSampler
 
+from .audio import FrameSeqProcessor
 from .ann_utils import convert_chord_ann_matrix, get_chord_labels
-from .utils import read_audio, split_with_context, stack_frames, log_filtered_spectrogram
+from .utils import read_audio, split_with_context, batch_sequence
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
@@ -101,25 +102,44 @@ def collect_files(dir_path, ext='.lab', excluded_files=(), allowed_files=()):
     return files
 
 
+def make_batch_frame_log_spec_dataset(
+        datasource,
+        window_size,
+        hop_length,
+        seq_length,
+        target_length,
+        cache):
+    audio_processor = FrameSeqProcessor(
+        window_size=window_size,
+        hop_length=hop_length)
+
+    dataset = SpecDataset(
+        datasource=datasource,
+        audio_processor=audio_processor,
+        cache=cache)
+
+    dataset = SequenceFrameDataset(
+        dataset=dataset,
+        seq_length=seq_length,
+        target_length=target_length)
+    return dataset
+
+
 class SpecDataset:
     def __init__(
             self,
             datasource,
-            window_size=4096,
-            hop_length=4410,
+            audio_processor,
             cache=None):
         """
         Args:
             datasource: list[tuple] - label:source file path location
-            window_size (int)
-            hop_length (int)
+            audio_processor: (AudioProcessor) - process audio files
             cache: cache.Cache obj - use cached data
         """
         self.datasource = datasource
-        self.window_size = window_size
-        self.hop_length = hop_length
+        self.audio_processor = audio_processor
         self.chord_labels = get_chord_labels(ext_minor='m', nonchord=True)
-        self.num_classes = len(self.chord_labels)
         self._data = []
         self.cache = cache
         self._init_dataset()
@@ -165,13 +185,7 @@ class SpecDataset:
         # ToDo:
         # check audio sample-rate to equal dataset sample rate
         audio_waveform, sampling_rate = read_audio(audio_path, sr=None, mono=True)
-
-        spec = log_filtered_spectrogram(
-            audio_waveform=audio_waveform,
-            sr=sampling_rate,
-            window_size=self.window_size,
-            hop_length=self.hop_length,
-            fmin=65, fmax=2100, num_bands=24)
+        spec = self.audio_processor.extract_features(audio_waveform, sampling_rate)
 
         fps = sampling_rate / self.hop_length
         ann_matrix, _, _, _, _ = convert_chord_ann_matrix(
@@ -240,13 +254,12 @@ class FrameDataset:
         return result
 
 
-class SequenceFrameDataset(FrameDataset):
+class SequenceFrameDataset(Dataset):
     def __init__(
             self,
             dataset,
-            context_size=7,
-            seq_length=20,
-            target_length=8,
+            seq_length=100,
+            target_length=15,
             transform=None):
         """
         Args:
@@ -256,10 +269,18 @@ class SequenceFrameDataset(FrameDataset):
         self.dataset = dataset
         self.seq_length = seq_length
         self.target_length = target_length
-        self.context_size = context_size
         self._frames = []
         self.transform = transform
         self._init_dataset()
+
+    def __len__(self):
+        return len(self._frames)
+
+    def __getitem__(self, idx):
+        inputs, labels = self._frames[idx]
+        if self.transform:
+            inputs = self.transform(inputs)
+        return inputs, labels
 
     def _init_dataset(self):
         for sample in self.dataset:
@@ -272,9 +293,9 @@ class SequenceFrameDataset(FrameDataset):
 
         # Exclude short input lengths to avoid negative log likelihood (that is ctc loss is)
         # https://discuss.pytorch.org/t/ctc-loss-with-variable-input-lengths-produces-nan-values/43476/5
-        spec_frames = stack_frames(spec.T, self.seq_length, last=False)
+        spec_frames = batch_sequence(spec.T, self.seq_length, last=False)
         label_frames = np.argmax(ann_matrix, 0)
-        label_frames = stack_frames(label_frames, self.seq_length, last=False)
+        label_frames = batch_sequence(label_frames, self.seq_length, last=False)
         # Initialize input/target pairs
         for spec_frame, label_frame in zip(spec_frames, label_frames):
             # Exclude blank labeled data

@@ -9,7 +9,8 @@ import matplotlib.pyplot as plt
 
 from chord_recognition.cache import HDF5Cache
 from chord_recognition.dataset import prepare_datasource, SpecDataset, collect_files
-from chord_recognition.predict import ChordRecognition, DeepChordRecognition
+from chord_recognition.audio import ChordRecognition, FrameSeqProcessor
+from chord_recognition.models import deep_harmony
 
 
 def compute_cer(reference, hypothesis, ignore_case=False, remove_space=False):
@@ -282,28 +283,26 @@ def save_annotations(annotations, file_path):
             writer.writerow(ann)
 
 
-def evaluate_dataset(dataset, save_ann=False, result_dir='results'):
-    estimator = DeepChordRecognition(
-        window_size=dataset.window_size,
-        hop_length=dataset.hop_length,
-        ext_minor=':min',
-        postprocessing=None,
-        nonchord=True)
+def evaluate_dataset(dataset, model, save_ann=False, result_dir='results'):
+    predictor = ChordRecognition(
+        audio_processor=dataset.audio_processor,
+        model=model,
+        ext_minor=':min')
 
     for i in range(len(dataset)):
         ann_path = dataset.datasource[i][0]
         sample_name = ann_path.split('/')[-1].replace('.lab', '')
         spec, ann_matrix = dataset[i]
 
-        spec = estimator.preprocess(spec)
-        out = estimator.predict_labels(spec)
-        out = estimator.postprocess(out)
+        features = predictor.audio_processor.split(spec.T)
+        features = predictor.preprocess(features)
+        out = predictor.predict_labels(features)
 
-        print(f'Eval: <{sample_name}>')
+        print(f'Process: <{sample_name}>')
         if save_ann:
             result_path = '/'.join(ann_path.split('/')[-4:]).replace('/chordlabs', '')
             result_path = os.path.join(result_dir, result_path)
-            result_ann = estimator.decode_chords(out, 44100)
+            result_ann = predictor.decode_chords(out)
             save_annotations(result_ann, result_path)
 
 
@@ -335,16 +334,26 @@ def main():
     args = parser.parse_args()
     ds_names = args.ds
 
+    audio_processor = FrameSeqProcessor(
+        window_size=8192,
+        hop_length=4410)
+
+    model = deep_harmony(pretrained=True,
+                         n_feats=105,
+                         n_cnn_layers=3,
+                         num_classes=26,
+                         n_rnn_layers=3)
+
     for ds_name in ds_names:
         print(f"Evaluating {ds_name} ...")
         datasource = prepare_datasource((ds_name,))
         dataset = SpecDataset(
             datasource=datasource,
-            window_size=8192,
-            hop_length=4410,
+            audio_processor=audio_processor,
             cache=HDF5Cache('spectrogram_ann_cache.hdf5'))
         evaluate_dataset(
             dataset=dataset,
+            model=model,
             save_ann=True)
         print_ds_compute_average_scores(ds_name)
 
