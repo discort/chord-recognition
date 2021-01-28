@@ -88,7 +88,6 @@ class FrameSeqProcessor(AudioProcessor):
             fmax=self.fmax,
             num_bands=24
         )
-        frames = self.split(spec.T)
         return frames
 
     def split(self, spec):
@@ -128,7 +127,11 @@ class ChordRecognition:
     def process(self, audio_waveform, sr):
         """
         Args:
-            audio_descriptor: file containing audio
+            audio_waveform: Audio time series (np.ndarray [shape=(n,))
+            sr: Sampling rate (int)
+
+        Returns:
+            chords in [(start, end, label), ...] format
 
         Returns:
             chords in [(start, end, label), ...] format
@@ -166,6 +169,7 @@ class ChordRecognition:
         Returns:
             features list[(np.ndarray [shape=(num_features, N))]
         """
+        features = self.audio_processor.split(features)
         features = [self.transform(f) for f in features]
         return features
 
@@ -216,41 +220,6 @@ class ChordRecognition:
             #sampler=sampler,
             batch_size=self.batch_size)
         return dataloader
-
-    # def predict_labels(self, features):
-    #     """
-    #     Predict chord labels from a feature-matrix
-
-    #     Args:
-    #         features - (np.ndarray [shape=(num_features, N))
-
-    #     Returns:
-    #         logits - np.ndarray [shape=(N, num_classes)]
-    #     """
-    #     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    #     dataloader = self._prepare_dataloader(features)
-    #     ann_matrix = forward(self.model, dataloader, device, self.num_classes)
-    #     ann_matrix = ann_matrix.data.numpy()
-    #     return ann_matrix
-
-    # def process(self, audio_waveform, sr):
-    #     """
-    #     Args:
-    #         audio_waveform: Audio time series (np.ndarray [shape=(n,))
-    #         sr: Sampling rate (int)
-
-    #     Returns:
-    #         chords in [(start, end, label), ...] format
-    #     """
-    #     if sr != DEFAULT_SAMPLE_RATE:
-    #         raise UnsupportedSampleRate(f"Sample rate: {sr} is not supported")
-
-    #     features = self.extract_features(audio_waveform, sr)
-    #     features = self.preprocess(features)
-    #     logits = self.predict_labels(features)
-    #     labels = self.postprocess(logits)
-    #     chords = self.decode_chords(labels, sr)
-    #     return chords
 
     # def postprocess(self, logits):
     #     """

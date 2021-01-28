@@ -107,7 +107,6 @@ def make_batch_frame_log_spec_dataset(
         window_size,
         hop_length,
         seq_length,
-        target_length,
         cache):
     audio_processor = FrameSeqProcessor(
         window_size=window_size,
@@ -120,8 +119,7 @@ def make_batch_frame_log_spec_dataset(
 
     dataset = SequenceFrameDataset(
         dataset=dataset,
-        seq_length=seq_length,
-        target_length=target_length)
+        seq_length=seq_length)
     return dataset
 
 
@@ -195,7 +193,7 @@ class SpecDataset:
         return spec, ann_matrix
 
 
-class FrameDataset:
+class FrameDataset(Dataset):
     def __init__(
             self,
             dataset,
@@ -259,16 +257,13 @@ class SequenceFrameDataset(Dataset):
             self,
             dataset,
             seq_length=100,
-            target_length=15,
             transform=None):
         """
         Args:
             seq_length (int) - sequence length in frames
-            target_length (int) - max target length
         """
         self.dataset = dataset
         self.seq_length = seq_length
-        self.target_length = target_length
         self._frames = []
         self.transform = transform
         self._init_dataset()
@@ -308,7 +303,8 @@ class SequenceFrameDataset(Dataset):
 
     def _cleanup_labels(self, labels):
         """
-        Sequentially remove duplicate labels
+        Sequentially remove duplicate labels.
+        It makes targets shorter than input for avoiding infinite losses
         """
         N = len(labels)
         result = []
@@ -327,7 +323,4 @@ class SequenceFrameDataset(Dataset):
                 prev_label = labels[i]
 
         result = np.array(result)
-        # offset = self.target_length - len(result)
-        #result = np.pad(result, pad_width=(0, offset), mode='constant', constant_values=0)
-        # Make targets shorter than inputs. Avoid infinite losses
         return result

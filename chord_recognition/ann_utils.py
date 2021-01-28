@@ -303,9 +303,3 @@ class ChordModel:
 
     def onehot_to_labels(self, argmax_vector):
         return [self.idx_to_label(idx) for idx in argmax_vector]
-
-    def label_to_onehot(self, label):
-        """
-        Converts label representation to one-hot vector
-        """
-        raise NotImplemented
