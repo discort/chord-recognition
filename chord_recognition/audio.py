@@ -267,7 +267,7 @@ def estimate_chords(audio_path,
         hop_length=4410)
     model = deep_harmony(pretrained=True,
                          n_feats=105,
-                         n_cnn_layers=3,
+                         cnn_kwargs=dict(n_cnn_layers=3),
                          num_classes=26,
                          n_rnn_layers=3)
     recognition = ChordRecognition(

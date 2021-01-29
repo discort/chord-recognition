@@ -90,9 +90,16 @@ class ResidualCNN(nn.Module):
         except with layer norm instead of batch norm
     """
 
-    def __init__(self, in_channels, out_channels, kernel, stride, dropout, n_feats):
+    def __init__(self,
+                 in_channels: int,
+                 out_channels: int,
+                 kernel: int,
+                 stride: int,
+                 dropout: float,
+                 n_feats: int,
+                 nonlinearity: nn.Module = nn.GELU):
         super(ResidualCNN, self).__init__()
-
+        self.nonlinearity = nonlinearity()
         self.cnn1 = nn.Conv2d(in_channels, out_channels, kernel, stride, padding=kernel // 2)
         self.cnn2 = nn.Conv2d(out_channels, out_channels, kernel, stride, padding=kernel // 2)
         self.dropout1 = nn.Dropout(dropout)
@@ -100,14 +107,14 @@ class ResidualCNN(nn.Module):
         self.layer_norm1 = CNNLayerNorm(n_feats)
         self.layer_norm2 = CNNLayerNorm(n_feats)
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         residual = x  # (batch, channel, feature, time)
         x = self.layer_norm1(x)
-        x = F.gelu(x)
+        x = self.nonlinearity(x)
         x = self.dropout1(x)
         x = self.cnn1(x)
         x = self.layer_norm2(x)
-        x = F.gelu(x)
+        x = self.nonlinearity(x)
         x = self.dropout2(x)
         x = self.cnn2(x)
         x += residual
@@ -160,17 +167,18 @@ class DeepHarmony(nn.Module):
                  n_feats: int,
                  rnn_type: nn.RNNBase = nn.LSTM,
                  num_classes: int = 26,
-                 n_cnn_layers: int = 3,
                  n_rnn_layers: int = 5,
                  rnn_dim: int = 128,
                  rnn_hidden_size: int = 128,
+                 cnn_kwargs: dict = {},
                  bidirectional: bool = False) -> None:
         super(DeepHarmony, self).__init__()
         self.num_classes = num_classes
         # #self.cnn_layers = DeepAuditoryV2(num_classes=num_classes)
+        cnn_kwargs.setdefault('n_cnn_layers', 3)
+        cnn_kwargs.setdefault('out_dim', rnn_dim)
         self.cnn = ResChroma(n_feats=n_feats,
-                             n_cnn_layers=n_cnn_layers,
-                             out_dim=rnn_dim)
+                             **cnn_kwargs)
         self.rnn_dim = rnn_dim
         self.rnn_hidden_size = rnn_hidden_size
         self.n_rnn_layers = n_rnn_layers

@@ -294,8 +294,7 @@ def evaluate_dataset(dataset, model, save_ann=False, result_dir='results'):
         sample_name = ann_path.split('/')[-1].replace('.lab', '')
         spec, ann_matrix = dataset[i]
 
-        features = predictor.audio_processor.split(spec.T)
-        features = predictor.preprocess(features)
+        features = predictor.preprocess(spec.T)
         out = predictor.predict_labels(features)
 
         print(f'Process: <{sample_name}>')
@@ -340,7 +339,7 @@ def main():
 
     model = deep_harmony(pretrained=True,
                          n_feats=105,
-                         n_cnn_layers=3,
+                         cnn_kwargs=dict(n_cnn_layers=3),
                          num_classes=26,
                          n_rnn_layers=3)
 
