@@ -93,8 +93,8 @@ class ResidualCNN(nn.Module):
     def __init__(self, in_channels, out_channels, kernel, stride, dropout, n_feats):
         super(ResidualCNN, self).__init__()
 
-        self.cnn1 = nn.Conv2d(in_channels, out_channels, kernel, stride, padding=kernel//2)
-        self.cnn2 = nn.Conv2d(out_channels, out_channels, kernel, stride, padding=kernel//2)
+        self.cnn1 = nn.Conv2d(in_channels, out_channels, kernel, stride, padding=kernel // 2)
+        self.cnn2 = nn.Conv2d(out_channels, out_channels, kernel, stride, padding=kernel // 2)
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
         self.layer_norm1 = CNNLayerNorm(n_feats)
@@ -118,7 +118,7 @@ class ResChroma(nn.Module):
     def __init__(self,
                  n_feats: int,
                  n_cnn_layers: int = 3,
-                 rnn_dim: int = 128,
+                 out_dim: int = 128,
                  dropout: float = 0.1) -> None:
         super(ResChroma, self).__init__()
         n_feats = n_feats // 2 + 1
@@ -128,7 +128,7 @@ class ResChroma(nn.Module):
             for _ in range(n_cnn_layers)
         ])
         self.batch_norm = nn.BatchNorm1d(n_feats * 32)
-        self.fully_connected = nn.Linear(n_feats * 32, rnn_dim, bias=False)
+        self.fully_connected = nn.Linear(n_feats * 32, out_dim, bias=False)
 
     def forward(self, x: Tensor) -> Tensor:
         """
@@ -164,13 +164,13 @@ class DeepHarmony(nn.Module):
                  n_rnn_layers: int = 5,
                  rnn_dim: int = 128,
                  rnn_hidden_size: int = 128,
-                 bidirectional: bool = True) -> None:
+                 bidirectional: bool = False) -> None:
         super(DeepHarmony, self).__init__()
         self.num_classes = num_classes
         # #self.cnn_layers = DeepAuditoryV2(num_classes=num_classes)
         self.cnn = ResChroma(n_feats=n_feats,
                              n_cnn_layers=n_cnn_layers,
-                             rnn_dim=rnn_dim)
+                             out_dim=rnn_dim)
         self.rnn_dim = rnn_dim
         self.rnn_hidden_size = rnn_hidden_size
         self.n_rnn_layers = n_rnn_layers
