@@ -126,16 +126,29 @@ class ResChroma(nn.Module):
                  n_feats: int,
                  n_cnn_layers: int = 3,
                  out_dim: int = 128,
+                 block_depth: int = 1,
                  dropout: float = 0.1) -> None:
         super(ResChroma, self).__init__()
+        assert 0 < block_depth < 3
+
         n_feats = n_feats // 2 + 1
         self.cnn = nn.Conv2d(1, 32, 3, stride=2, padding=1)
         self.cnn_layers = nn.Sequential(*[
             ResidualCNN(32, 32, kernel=3, stride=1, dropout=dropout, n_feats=n_feats)
             for _ in range(n_cnn_layers)
         ])
-        self.batch_norm = nn.BatchNorm1d(n_feats * 32)
-        self.fully_connected = nn.Linear(n_feats * 32, out_dim, bias=False)
+        fc_input = n_feats * 32
+        if block_depth == 2:
+            self.cnn_layers = nn.Sequential(
+                self.cnn_layers,
+                nn.Conv2d(32, 64, 3, stride=1, padding=1),
+                *[ResidualCNN(64, 64, kernel=3, stride=1, dropout=dropout, n_feats=n_feats)
+                  for _ in range(n_cnn_layers)]
+            )
+            fc_input = n_feats * 64
+
+        self.batch_norm = nn.BatchNorm1d(fc_input)
+        self.fully_connected = nn.Linear(fc_input, out_dim, bias=False)
 
     def forward(self, x: Tensor) -> Tensor:
         """

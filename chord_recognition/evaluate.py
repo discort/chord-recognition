@@ -13,6 +13,9 @@ from chord_recognition.audio import ChordRecognition, FrameSeqProcessor
 from chord_recognition.models import deep_harmony
 
 
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+
+
 def compute_cer(reference, hypothesis, ignore_case=False, remove_space=False):
     """Calculate character error rate (CER). CER compares reference text and
     hypothesis text in char-level. CER is defined as:
@@ -317,9 +320,9 @@ def print_ds_compute_average_scores(ds_name):
         # zweieck
         "16_-_Zu_Leise_Für_Mich.lab",
     )
-    ann_root = f'data/{ds_name}/chordlabs/'
+    ann_root = os.path.join(BASE_DIR, f'data/{ds_name}/chordlabs/')
     annotation_files = collect_files(ann_root, excluded_files=excluded_files)
-    pred_root = f'results/{ds_name}/'
+    pred_root = os.path.join(BASE_DIR, f'results/{ds_name}/')
     prediction_files = collect_files(pred_root, ext='', excluded_files=excluded_files)
     scores = compute_average_scores(annotation_files, prediction_files)
     print_scores(scores)
