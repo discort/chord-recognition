@@ -16,11 +16,13 @@ CURR_DIR = os.path.dirname(__file__)
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 
-def deep_harmony(pretrained: bool = False, **kwargs: Any):
+def deep_harmony(pretrained: bool = False,
+                 model_name: str = 'deep_harmony_exp6.pth',
+                 **kwargs: Any):
     if pretrained:
         model = DeepHarmony(**kwargs)
         state_dict = torch.load(
-            os.path.join(CURR_DIR, 'deep_auditory_v2_exp6.pth'),
+            os.path.join(CURR_DIR, model_name),
             map_location=device)
         model.load_state_dict(state_dict)
         return model
