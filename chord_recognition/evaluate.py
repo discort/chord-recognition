@@ -276,10 +276,11 @@ def compute_average_scores(annotation_files, prediction_files):
 
 
 def save_annotations(annotations, file_path):
-    dirname = os.path.dirname(file_path)
+    dirname = os.path.join(BASE_DIR, os.path.dirname(file_path))
     if not os.path.exists(dirname):
         os.makedirs(dirname)
 
+    file_path = os.path.join(BASE_DIR, file_path)
     with open(file_path, 'w') as csvfile:
         writer = csv.writer(csvfile, delimiter=' ')
         for ann in annotations:
