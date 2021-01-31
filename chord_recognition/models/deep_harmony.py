@@ -180,6 +180,82 @@ class ResChroma(nn.Module):
         return x
 
 
+class ResidualCNNV2(nn.Module):
+    """Residual CNN inspired by https://arxiv.org/pdf/1603.05027.pdf
+        except with layer norm instead of batch norm
+    """
+
+    def __init__(self,
+                 in_channels: int,
+                 out_channels: int,
+                 kernel: int,
+                 stride: int,
+                 n_feats: int):
+        super(ResidualCNNV2, self).__init__()
+        self.cnn1 = nn.Conv2d(in_channels, out_channels, kernel, stride, padding=kernel // 2)
+        self.cnn2 = nn.Conv2d(out_channels, out_channels, kernel, stride, padding=kernel // 2)
+        self.layer_norm1 = CNNLayerNorm(n_feats)
+        self.layer_norm2 = CNNLayerNorm(n_feats)
+
+    def forward(self, x: Tensor) -> Tensor:
+        residual = x  # (batch, channel, feature, time)
+        x = self.layer_norm1(x)
+        x = self.cnn1(x)
+        x = F.relu(x)
+        x = self.layer_norm2(x)
+        x = self.cnn2(x)
+        x += residual
+        x = F.relu(x)
+        return x  # (batch, channel, feature, time)
+
+
+class ResChromaV2(nn.Module):
+    def __init__(self,
+                 n_feats: int,
+                 n_cnn_layers: int = 3,
+                 out_dim: int = 128,
+                 block_depth: int = 1,
+                 nonlinearity: nn.Module = nn.ReLU) -> None:
+        super(ResChromaV2, self).__init__()
+        assert 0 < block_depth < 3
+
+        n_feats = n_feats // 2 + 1
+        self.cnn = nn.Conv2d(1, 32, 3, stride=2, padding=1)
+        self.cnn_layers = nn.Sequential(*[
+            ResidualCNNV2(32, 32, kernel=3, stride=1,
+                          n_feats=n_feats,)
+            for _ in range(n_cnn_layers)
+        ])
+        self.batch_norm = nn.BatchNorm1d(n_feats * 32)
+        self.fully_connected = nn.Linear(n_feats * 32, out_dim, bias=False)
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        N - batch size
+        F - features
+        T - time
+        """
+        # N x 1 x F x T
+        x = self.cnn(x)
+        # N x 32 x F x T
+        x = F.relu(x)
+        # N x 32 x F x T
+        x = self.cnn_layers(x)
+        # N x 32 x F x T
+        sizes = x.size()
+        x = x.view(sizes[0], sizes[1] * sizes[2], sizes[3])
+        # N x F x T
+        x = self.batch_norm(x)
+        # N x F x T
+        x = x.transpose(1, 2)  # (batch, time, feature)
+        # N x T x F
+        x = self.fully_connected(x)
+        # N x T x F
+        x = x.transpose(0, 1)
+        # T x N x F
+        return x
+
+
 class DeepHarmony(nn.Module):
     def __init__(self,
                  n_feats: int,
@@ -195,8 +271,8 @@ class DeepHarmony(nn.Module):
         # #self.cnn_layers = DeepAuditoryV2(num_classes=num_classes)
         cnn_kwargs.setdefault('n_cnn_layers', 3)
         cnn_kwargs.setdefault('out_dim', rnn_dim)
-        self.cnn = ResChroma(n_feats=n_feats,
-                             **cnn_kwargs)
+        self.cnn = ResChromaV2(n_feats=n_feats,
+                               **cnn_kwargs)
         self.rnn_dim = rnn_dim
         self.rnn_hidden_size = rnn_hidden_size
         self.n_rnn_layers = n_rnn_layers
