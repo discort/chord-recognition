@@ -6,6 +6,7 @@ import warnings
 from collections import namedtuple
 from typing import List, Tuple
 from torch import Tensor
+import math
 import numbers
 
 '''
@@ -151,8 +152,9 @@ class LayerNormLSTMCell(jit.ScriptModule):
         super(LayerNormLSTMCell, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
-        self.weight_ih = Parameter(torch.randn(4 * hidden_size, input_size))
-        self.weight_hh = Parameter(torch.randn(4 * hidden_size, hidden_size))
+        stdv = 1.0 / math.sqrt(self.hidden_size)
+        self.weight_ih = Parameter(torch.Tensor(4 * hidden_size, input_size).uniform_(-stdv, stdv))
+        self.weight_hh = Parameter(torch.Tensor(4 * hidden_size, hidden_size).uniform_(-stdv, stdv))
         # The layernorms provide learnable biases
 
         if decompose_layernorm:
