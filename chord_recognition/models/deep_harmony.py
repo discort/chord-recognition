@@ -103,8 +103,8 @@ class ResidualCNN(nn.Module):
                  downsample=None):
         super(ResidualCNN, self).__init__()
         self.nonlinearity = nonlinearity()
-        self.cnn1 = nn.Conv2d(in_channels, out_channels, kernel, stride, padding=kernel // 2)
-        self.cnn2 = nn.Conv2d(out_channels, out_channels, kernel, stride, padding=kernel // 2)
+        self.cnn1 = nn.Conv2d(in_channels, out_channels, kernel, stride, padding=kernel // 2, bias=False)
+        self.cnn2 = nn.Conv2d(out_channels, out_channels, kernel, stride, padding=kernel // 2, bias=False)
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
         self.layer_norm1 = CNNLayerNorm(n_feats)
@@ -139,7 +139,7 @@ class ResChroma(nn.Module):
         assert 0 < block_depth < 3
 
         n_feats = n_feats // 2 + 1
-        self.cnn = nn.Conv2d(1, 32, 3, stride=2, padding=1)
+        self.cnn = nn.Conv2d(1, 32, 3, stride=2, padding=1, bias=False)
         self.cnn_layers = nn.Sequential(*[
             ResidualCNN(32, 32, kernel=3, stride=1,
                         dropout=dropout, n_feats=n_feats, nonlinearity=nonlinearity)
@@ -153,7 +153,7 @@ class ResChroma(nn.Module):
             )
             fc_input = n_feats * 64
 
-        self.batch_norm = nn.BatchNorm1d(fc_input)
+        self.norm = CNNLayerNorm(n_feats)
         self.fully_connected = nn.Linear(fc_input, out_dim, bias=False)
 
     def _make_layer(self,
@@ -198,10 +198,12 @@ class ResChroma(nn.Module):
         # N x 32 x F x T
         x = self.cnn_layers(x)
         # N x 32 x F x T
+        x = self.norm(x)
+        # N x 32 x F x T
+        x = F.relu(x)
+        # N x 32 x F x T
         sizes = x.size()
         x = x.view(sizes[0], sizes[1] * sizes[2], sizes[3])
-        # N x F x T
-        x = self.batch_norm(x)
         # N x F x T
         x = x.transpose(1, 2)  # (batch, time, feature)
         # N x T x F
