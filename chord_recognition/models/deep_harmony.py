@@ -154,7 +154,8 @@ class ResChroma(nn.Module):
             fc_input = n_feats * 64
 
         self.norm = CNNLayerNorm(n_feats)
-        self.fully_connected = nn.Linear(fc_input, out_dim, bias=False)
+        self.pool = nn.AvgPool2d(kernel_size=(9, 1))
+        self.fully_connected = nn.Linear(64 * 5, out_dim)
 
     def _make_layer(self,
                     in_planes,
@@ -202,6 +203,7 @@ class ResChroma(nn.Module):
         # N x 32 x F x T
         x = F.relu(x)
         # N x 32 x F x T
+        x = self.pool(x)
         sizes = x.size()
         x = x.view(sizes[0], sizes[1] * sizes[2], sizes[3])
         # N x F x T
