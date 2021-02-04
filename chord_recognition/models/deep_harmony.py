@@ -7,7 +7,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
-from chord_recognition.models.deep_auditory import DeepAuditoryV2
 from chord_recognition.utils import ctc_greedy_decoder, expand_labels
 
 from .layers import script_lnlstm, LSTMState
@@ -45,31 +44,6 @@ class SequenceWise(nn.Module):
         x = x.view(t * n, -1)
         x = self.module(x)
         x = x.view(t, n, -1)
-        return x
-
-
-class BatchRNN(nn.Module):
-    def __init__(self,
-                 input_size: int,
-                 hidden_size: int,
-                 rnn_type: nn.RNNBase = nn.LSTM,
-                 bidirectional: bool = False,
-                 batch_norm: bool = False):
-        super(BatchRNN, self).__init__()
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        self.bidirectional = bidirectional
-        self.batch_norm = SequenceWise(nn.BatchNorm1d(input_size)) if batch_norm else None
-        self.rnn = rnn_type(input_size=input_size, hidden_size=hidden_size,
-                            bidirectional=bidirectional, bias=True)
-
-    def forward(self, x):
-        if self.batch_norm is not None:
-            x = self.batch_norm(x)
-        x, h = self.rnn(x)
-        if self.bidirectional:
-            # (TxNxH*2) -> (TxNxH) by sum
-            x = x.view(x.size(0), x.size(1), 2, -1).sum(2).view(x.size(0), x.size(1), -1)
         return x
 
 
@@ -140,35 +114,38 @@ class ResChroma(nn.Module):
 
         n_feats = n_feats // 2 + 1
         self.cnn = nn.Conv2d(1, 32, 3, stride=2, padding=1, bias=False)
-        self.cnn_layers = nn.Sequential(*[
-            ResidualCNN(32, 32, kernel=3, stride=1,
-                        dropout=dropout, n_feats=n_feats, nonlinearity=nonlinearity)
-            for _ in range(n_cnn_layers)
-        ])
-        fc_input = n_feats * 32
-        if block_depth == 2:
-            self.cnn_layers = nn.Sequential(
-                self.cnn_layers,
-                self._make_layer(32, 64, n_cnn_layers, dropout, n_feats, nonlinearity)
-            )
-            fc_input = n_feats * 64
 
-        self.norm = CNNLayerNorm(n_feats)
-        self.pool = nn.AvgPool2d(kernel_size=(9, 1))
-        self.fully_connected = nn.Linear(64 * 5, out_dim)
+        cnn_blocks = []
+        depths = (32, 64, 128)
+        in_channels = 32
+        for out_channels in depths[:block_depth]:
+            block = self._make_block(
+                in_channels, out_channels, n_cnn_layers, dropout, n_feats, nonlinearity)
+            cnn_blocks.append(block)
+            in_channels = out_channels
 
-    def _make_layer(self,
+        self.cnn_layers = nn.Sequential(*cnn_blocks)
+
+        fc_input = out_channels * (n_feats // 2)
+        self.pool = nn.AvgPool2d(kernel_size=(2, 1))
+        self.fully_connected = nn.Sequential(
+            nn.Dropout(dropout),
+            nn.Linear(fc_input, out_dim)
+        )
+
+    def _make_block(self,
                     in_planes,
                     out_planes,
                     n_cnn_layers,
                     dropout,
                     n_feats,
                     nonlinearity):
-        layers = []
-        downsample = nn.Sequential(
-            nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=1, bias=False),
-            nn.BatchNorm2d(out_planes),
-        )
+        downsample = None
+        if in_planes != out_planes:
+            downsample = nn.Sequential(
+                nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=1, bias=False),
+                nn.BatchNorm2d(out_planes),
+            )
         conv = ResidualCNN(in_planes, out_planes,
                            kernel=3,
                            stride=1,
@@ -176,6 +153,7 @@ class ResChroma(nn.Module):
                            n_feats=n_feats,
                            nonlinearity=nonlinearity,
                            downsample=downsample)
+        layers = []
         layers.append(conv)
         for _ in range(n_cnn_layers - 1):
             conv = ResidualCNN(out_planes, out_planes,
@@ -199,11 +177,8 @@ class ResChroma(nn.Module):
         # N x 32 x F x T
         x = self.cnn_layers(x)
         # N x 32 x F x T
-        x = self.norm(x)
-        # N x 32 x F x T
-        x = F.relu(x)
-        # N x 32 x F x T
         x = self.pool(x)
+        # N x 32 x F x T
         sizes = x.size()
         x = x.view(sizes[0], sizes[1] * sizes[2], sizes[3])
         # N x F x T
@@ -224,15 +199,17 @@ class DeepHarmony(nn.Module):
                  n_rnn_layers: int = 5,
                  rnn_dim: int = 128,
                  rnn_hidden_size: int = 128,
+                 dropout: float = 0.1,
                  cnn_kwargs: dict = {},
                  bidirectional: bool = False) -> None:
         super(DeepHarmony, self).__init__()
-        self.num_classes = num_classes
-        # #self.cnn_layers = DeepAuditoryV2(num_classes=num_classes)
         cnn_kwargs.setdefault('n_cnn_layers', 3)
         cnn_kwargs.setdefault('out_dim', rnn_dim)
+        cnn_kwargs.setdefault('dropout', 0.1)
         self.cnn = ResChroma(n_feats=n_feats,
                              **cnn_kwargs)
+
+        self.num_classes = num_classes
         self.rnn_dim = rnn_dim
         self.rnn_hidden_size = rnn_hidden_size
         self.n_rnn_layers = n_rnn_layers
@@ -242,8 +219,8 @@ class DeepHarmony(nn.Module):
                                         num_layers=n_rnn_layers,
                                         bidirectional=False)
         fully_connected = nn.Sequential(
-            nn.BatchNorm1d(rnn_hidden_size),
-            nn.Linear(rnn_hidden_size, self.num_classes, bias=False)
+            nn.Dropout(dropout),
+            nn.Linear(rnn_hidden_size, self.num_classes)
         )
         self.fc = nn.Sequential(SequenceWise(fully_connected))
 
