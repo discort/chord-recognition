@@ -194,7 +194,6 @@ class ResChroma(nn.Module):
 class DeepHarmony(nn.Module):
     def __init__(self,
                  n_feats: int,
-                 rnn_type: nn.RNNBase = nn.LSTM,
                  num_classes: int = 26,
                  n_rnn_layers: int = 5,
                  rnn_dim: int = 128,
