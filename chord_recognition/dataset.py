@@ -298,7 +298,7 @@ class SequenceFrameDataset(Dataset):
                 continue
 
             label_frame = self._cleanup_labels(label_frame)
-            result.append((spec_frame, label_frame))
+            result.append((spec_frame.T[np.newaxis], label_frame))
         return result
 
     def _cleanup_labels(self, labels):

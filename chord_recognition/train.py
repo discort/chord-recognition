@@ -65,11 +65,11 @@ def data_processing(data):
     label_lengths = []
     for batch in data:
         inputs_b, labels_b = batch
-        inputs.append(torch.from_numpy(inputs_b))
-        labels.append(torch.from_numpy(labels_b))
-        input_lengths.append(len(inputs_b) // 2)
+        inputs.append(torch.Tensor(inputs_b))
+        labels.append(torch.Tensor(labels_b))
+        input_lengths.append(inputs_b.shape[2] // 2)
         label_lengths.append(len(labels_b))
-    inputs = nn.utils.rnn.pad_sequence(inputs, batch_first=True).unsqueeze(1).transpose(2, 3)
+    inputs = nn.utils.rnn.pad_sequence(inputs, batch_first=True)
     labels = nn.utils.rnn.pad_sequence(labels, batch_first=True)
     return inputs, labels, input_lengths, label_lengths
 
