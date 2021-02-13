@@ -1,6 +1,5 @@
 import os
 
-from livelossplot import PlotLosses
 import numpy as np
 import torch
 import torch.nn as nn
@@ -10,6 +9,7 @@ from torch.utils.data import WeightedRandomSampler
 from .ann_utils import ChordModel
 from .evaluate import compute_cer, compute_wer
 from .utils import ctc_greedy_decoder
+from .logger import liveloss
 
 MODELS_DIR = os.path.join(os.path.dirname(__file__), 'models')
 
@@ -87,6 +87,7 @@ class Solver:
         scheduler=None,
         loss=None,
         epochs=1,
+        logger=liveloss,
         trained_model_name='best_model.pth',
     ):
         self.optimizer = optimizer
@@ -99,11 +100,12 @@ class Solver:
         self.loss_name = loss
         self.criterion = nn.CTCLoss()
         self.chord_model = ChordModel()
+        self.logger = logger
         self._reset()
 
     def train(self):
-        liveloss = PlotLosses()
         best_loss = np.inf
+        logger = self.logger
         for e in range(self.epochs):
             logs = {}
             for phase in ['train', 'val']:
@@ -126,8 +128,8 @@ class Solver:
                 logs[prefix + ' log loss'] = epoch_loss.item()
                 logs[prefix + ' WER'] = avg_wer
 
-            liveloss.update(logs)
-            liveloss.send()
+            logger.log_scalars(logs)
+            logger.log_named_parameters(self.model.named_parameters())
 
     def _step(self, phase):
         running_loss = 0.0

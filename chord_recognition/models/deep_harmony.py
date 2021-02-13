@@ -256,7 +256,6 @@ class DeepHarmony(nn.Module):
         pred_labels = []  # (seq_len, [batch_labels])
         for inputs in dataloader:
             # Convert to (batch, channel, features, time)
-            #inputs = inputs.unsqueeze(1).transpose(2, 3)
             out = self.forward(inputs).data.numpy()  # T x N x C
             decoded_out = self.decoder(out)
 
