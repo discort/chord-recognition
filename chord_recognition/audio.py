@@ -170,7 +170,7 @@ class ChordRecognition:
             features list[(np.ndarray [shape=(num_features, N))]
         """
         features = self.audio_processor.split(features)
-        features = [self.transform(f) for f in features]
+        features = [self.transform(f.T)[np.newaxis] for f in features]
         return features
 
     def predict_labels(self, features):

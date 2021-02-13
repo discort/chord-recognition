@@ -126,8 +126,8 @@ class ResChroma(nn.Module):
 
         self.cnn_layers = nn.Sequential(*cnn_blocks)
 
-        fc_input = out_channels * (n_feats // 2)
-        self.pool = nn.AvgPool2d(kernel_size=(2, 1))
+        fc_input = out_channels * (n_feats // 12)
+        self.pool = nn.AvgPool2d(kernel_size=(12, 1))
         self.fully_connected = nn.Sequential(
             nn.Dropout(dropout),
             nn.Linear(fc_input, out_dim)
@@ -256,7 +256,7 @@ class DeepHarmony(nn.Module):
         pred_labels = []  # (seq_len, [batch_labels])
         for inputs in dataloader:
             # Convert to (batch, channel, features, time)
-            inputs = inputs.unsqueeze(1).transpose(2, 3)
+            #inputs = inputs.unsqueeze(1).transpose(2, 3)
             out = self.forward(inputs).data.numpy()  # T x N x C
             decoded_out = self.decoder(out)
 
