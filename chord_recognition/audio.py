@@ -7,22 +7,6 @@ from chord_recognition.transformations import Rescale, TRAIN_MEAN, TRAIN_STD
 from chord_recognition.utils import log_filtered_spectrogram, split_with_context,\
     read_audio, one_hot, batch_sequence
 
-# @torch.no_grad()
-# def forward(model, dataloader, device, num_classes, criterion=None):
-#     if not criterion:
-#         criterion = nn.Softmax(dim=1)
-
-#     result = []
-#     for inputs in dataloader:
-#         inputs = inputs.to(device=device, dtype=torch.float32)
-#         scores = model(inputs)
-#         scores = criterion(scores)
-#         scores = scores.squeeze(3).squeeze(2)
-#         result.append(scores)
-
-#     result = torch.cat(result)
-#     return result
-
 
 DEFAULT_SAMPLE_RATE = 44100
 
@@ -220,25 +204,6 @@ class ChordRecognition:
             #sampler=sampler,
             batch_size=self.batch_size)
         return dataloader
-
-    # def postprocess(self, logits):
-    #     """
-    #     Postprocess logits to get one-hot repr of labels
-
-    #     Args:
-    #         logits np.ndarray [shape=(N, num_classes)]
-
-    #     Returns:
-    #         one-hot representation of labels, np.array [shape=(N, num_classes)]
-    #     """
-    #     if not self.postprocessing:
-    #         preds = np.argmax(logits, 1)
-    #         labels = one_hot(preds, self.num_classes)
-    #     elif self.postprocessing == 'hmm':
-    #         labels = postprocess_HMM(logits.T, p=0.22).T
-    #     else:
-    #         raise ValueError(f"Invalid param: {postprocessing} for postprocessing")
-    #     return labels
 
 
 def estimate_chords(audio_path,

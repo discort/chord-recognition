@@ -128,8 +128,8 @@ class Solver:
                 logs[prefix + ' log loss'] = epoch_loss.item()
                 logs[prefix + ' WER'] = avg_wer
 
-            logger.log_scalars(logs)
-            logger.log_named_parameters(self.model.named_parameters())
+            logger.log_scalars(logs, e)
+            logger.log_histograms(self.model.named_parameters(), e)
 
     def _step(self, phase):
         running_loss = 0.0
