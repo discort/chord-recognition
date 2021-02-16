@@ -66,12 +66,15 @@ def script_lnlstm(input_size, hidden_size, num_layers, bias=True,
     # The following are not implemented.
     assert bias
     assert not batch_first
-    assert not dropout
 
     if bidirectional:
         stack_type = StackedLSTM2
         layer_type = BidirLSTMLayer
         dirs = 2
+    elif dropout:
+        stack_type = StackedLSTMWithDropout
+        layer_type = LSTMLayer
+        dirs = 1
     else:
         stack_type = StackedLSTM
         layer_type = LSTMLayer
